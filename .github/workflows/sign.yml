@@ -1,0 +1,155 @@
+name: Sign portable release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-portable-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.repository == 'ArdeaNew/ClearNote' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.run_attempt == '1'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      MSBuildEnableWorkloadResolver: 'false'
+    outputs:
+      artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+      version: ${{ steps.metadata.outputs.version }}
+      file-version: ${{ steps.metadata.outputs.file-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build, check and publish this commit
+        run: ./src/build.ps1 -Configuration Release
+
+      - name: Validate release executable
+        id: metadata
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$project = Get-Content -LiteralPath ./src/Folio.App/Folio.App.csproj -Raw
+          $version = [string]$project.Project.PropertyGroup.Version
+          $fileVersion = [string]$project.Project.PropertyGroup.FileVersion
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $fileVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw 'The project must declare a release version and file version.'
+          }
+          $exe = Get-Item -LiteralPath ./app/ClearNote.exe
+          if ($exe.VersionInfo.ProductName -ne 'ClearNote' -or $exe.VersionInfo.FileVersion -ne $fileVersion) {
+            throw 'The executable does not match the ClearNote release metadata.'
+          }
+          if ((Get-AuthenticodeSignature -LiteralPath $exe.FullName).Status -ne 'NotSigned') {
+            throw 'The build must produce a fresh unsigned executable.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "file-version=$fileVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the executable for origin verification
+        id: unsigned
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: unsigned-clearnote-${{ github.run_id }}
+          path: app/ClearNote.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  sign:
+    needs: build
+    if: >-
+      github.repository == 'ArdeaNew/ClearNote' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.run_attempt == '1'
+    runs-on: windows-latest
+    timeout-minutes: 80
+    environment: release-signing
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require production signing configuration
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          SIGNPATH_CERTIFICATE_SHA256: ${{ vars.SIGNPATH_CERTIFICATE_SHA256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('SIGNPATH_API_TOKEN', 'SIGNPATH_ORGANIZATION_ID', 'SIGNPATH_PROJECT_SLUG',
+              'SIGNPATH_SIGNING_POLICY_SLUG', 'SIGNPATH_ARTIFACT_CONFIGURATION_SLUG', 'SIGNPATH_CERTIFICATE_SHA256')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Production signing is unavailable: configure $name in the release-signing environment."
+            }
+          }
+          if ($env:SIGNPATH_CERTIFICATE_SHA256 -notmatch '^[A-Fa-f0-9]{64}$') {
+            throw 'SIGNPATH_CERTIFICATE_SHA256 must identify the approved production certificate.'
+          }
+
+      - name: Request approved production signature
+        id: signing
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+
+      - name: Verify signature, publisher and timestamp
+        env:
+          EXPECTED_CERTIFICATE_SHA256: ${{ vars.SIGNPATH_CERTIFICATE_SHA256 }}
+          EXPECTED_FILE_VERSION: ${{ needs.build.outputs.file-version }}
+        run: |
+          ./src/tools/Verify-Signature.ps1 -SignedDirectory ./signed `
+            -ExpectedSignerCertificateSha256 $env:EXPECTED_CERTIFICATE_SHA256 `
+            -ExpectedFileVersion $env:EXPECTED_FILE_VERSION
+
+      - name: Package the verified executable
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path ./app | Out-Null
+          Copy-Item -LiteralPath ./signed/ClearNote.exe -Destination ./app/ClearNote.exe
+          ./src/tools/Package.ps1 -OutputDirectory ./artifacts -Version $env:RELEASE_VERSION
+
+      - name: Upload signed portable package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ClearNote-signed-${{ needs.build.outputs.version }}-${{ github.run_id }}
+          path: artifacts/ClearNote-${{ needs.build.outputs.version }}-Windows.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -28,6 +28,8 @@ These images use demonstration data rendered with the application's own controls
 
 [Download the latest Windows release](https://github.com/ArdeaNew/ClearNote/releases/latest).
 
+Current releases are unsigned. See the [Code signing policy](docs/CODE_SIGNING.md) for signing status and release verification.
+
 Use Windows x64 with the **Microsoft .NET 10 Desktop Runtime** installed. Extract the portable folder and open `ClearNote.exe` from a writable location.
 
 A new notebook starts with two welcome posts. They are ordinary editable notes; deleting them also removes an exclusively owned picture. Deleted welcome posts do not return.
