@@ -1,0 +1,88 @@
+# ClearNote architecture
+
+ClearNote is a local Windows desktop application with one portable data directory. Its structure favors direct calls and a small dependency graph over additional frameworks.
+
+```mermaid
+graph TD
+    App[Folio.App: WPF application] --> Core[Folio.Core: models, validation, scheduling, persistence]
+    UiChecks[Folio.UiTests: Windows component checks] --> App
+    CoreChecks[Folio.Tests: storage and domain checks] --> Core
+```
+
+There are no external package references. Core targets `net10.0`; App and its UI checks target `net10.0-windows`. All projects enable nullable references and deterministic builds through `Directory.Build.props`. The legacy Folio project and namespace names remain internal compatibility details; the executable and product are ClearNote.
+
+## Responsibilities
+
+| Area | Responsibility | Kept outside it |
+| --- | --- | --- |
+| `Folio.Core/Models.cs`, `NoteText`, `NoteColors`, `NoteTags`, `MarkdownText` | Validated note structures, independent copies, derived tags and bounded shorthand parsing | WPF, clipboard and rendered layout |
+| `Folio.Core/ReviewScheduler.cs` | Recall estimates, memory updates and weighted Notes selection | Viewport visibility and session boundaries |
+| `Folio.Core/LibraryStore.cs` | Library loading, atomic commits, image ownership paths, validated backup/restore and shared storage primitives | Dialogs, bitmap decoding and UI state |
+| `LibraryStore.Drafts.cs` | Independent Notes/Memo drafts, external-change checks and recovery versions | Editor controls and timers |
+| `LibraryStore.Profiles.cs` | Profile validation, isolated recovery, atomic profile saves and profile conflict tracking | Avatar decoding and profile dialogs |
+| `LibraryStore.Deletion.cs` | Deletion intent, recovery completion and removal of unshared managed images | User-selected source files and manual archives |
+| `Folio.Core/NoteImages.cs`, `ArchiveLimits.cs` | Encoded-image and archive validation, size/path/integrity limits | Optional Windows image codecs |
+| `Folio.Core/PortableStorage.cs` | Copy-and-verify migration of older adjacent data into `Log` | Desktop window behavior |
+| `Folio.App/App.xaml.cs` | Startup, English native dialogs, path-based instance locks, library opening and recovery | Scheduling equations |
+| `Folio.App/MainWindow*` | Composition of the shared feed, draft lifecycle, Notes/Review/Memo navigation and user commands | JSON serialization and asset deletion rules |
+| `MainWindow.Width`, `WindowWidthPreferences` | Work-area fitting, fixed-step width actions and atomic local window preferences | Notebook formats and portable library archives |
+| `Folio.App/Controls/NoteEditor.cs` | Native continuous text editing and structured capture, Markdown entry, lists, text formatting and undo | Persistent file writes |
+| `FeedView`, `FeedNoteCard` | Batched feed rendering, visible-note events, inline editing and post presentation | Review-memory equations |
+| `AttachmentPanel`, `ImageAttachments` | Aspect-aware galleries, editor previews, clipboard and file decoding into independent PNG copies | Library recovery and backup policy |
+| `AppIcons`, `AppTypography`, `ProfileDialog`, `TextColorMenu`, `TagSuggestions` | Reusable presentation and local interaction | Storage formats |
+
+`LibraryStore` is a partial class because these operations share one lock, one serialization configuration, validation primitives and a coherent transaction boundary. Its partial files group responsibilities without creating independently writable repositories for the same files. Profile state reset is shared between initial load and restore.
+
+## Data and identity
+
+Normal portable startup uses:
+
+```text
+ClearNote.exe
+Log/
+  Data/
+    library.json
+    library.previous.json
+    assets/
+    draft.json                                (when saved)
+    draft.previous.json                       (draft recovery)
+    memo-draft.json                            (when saved)
+    memo-draft.previous.json                   (Memo draft recovery)
+    profile.json                              (optional)
+    delete.pending.json                       (only during interrupted deletion)
+  Backups/                                    (explicit exports)
+  Diagnostics/                                (errors only)
+  window.json                                 (window preference, when adjusted)
+```
+
+`window.json` contains presentation settings rather than review or note content and is excluded from library archives. Restoring a library preserves the former Data directory beside the new one. The optional `--data` argument selects a separate library directory for development and recovery work. Never use real notebook data as a fixture.
+
+One `CardDocument.Collection` value distinguishes Notes from Memo. Earlier schemas default to Notes, and schema 5 persists the collection. The collections share a library snapshot, asset directory and local profile. Separate draft files preserve each composer's in-progress text and attachments. Core prevents an existing note from changing collection through `Upsert`. Both scheduler selection and direct browse recording exclude Memo.
+
+The local identity is shared, rather than copied into every post. Changing a name or avatar updates the displayed authors while preserving note content, review history and editing buffers. Default identity and first-run welcome creation belong to App. Welcome posts are ordinary Core documents; a saved empty library is not new and never repopulates deleted posts.
+
+## Write and recovery boundaries
+
+`Cards`, note content and profile reads return independent copies. UI edits become persistent through explicit store methods. Ordinary commits validate a complete candidate, compare the known library hash, flush a new file, then atomically replace the primary while retaining the preceding complete save. Recovery tries the previous complete save and blocks unsafe writes if both copies are invalid.
+
+Drafts and profile have separate change tracking. A damaged draft or profile must not disable healthy saved notes, and saving a note must not silently overwrite external draft or profile edits. Backup validates the combined state and rechecks all inspected files before publishing an archive. Restore validates and stages the complete archive before moving an existing healthy library.
+
+Images are imported before notes or drafts refer to them. App decodes, applies orientation and creates an independent normalized PNG. Core validates encoded bytes and dimensions, assigns an immutable SHA256 filename and ensures the reference resolves within the asset directory. Equal bytes may share one file.
+
+Explicit deletion first plans the removed note's managed assets and retains any asset referenced by another post, the profile or either collection's current or recoverable previous draft. A small durable intent lets restart finish interrupted cleanup. Both library snapshots are sanitized so recovery cannot resurrect deleted text. Only then are unused local pictures removed. Source files chosen for import and manually exported backup archives remain independent.
+
+The UI saves a dirty composer before deleting a note so ownership checks can see unsent image references. It saves pending edits and the departing draft before changing feeds. A failed save leaves the active feed and buffers available for retry. Review visibility events are counted once per round by App, then persisted through the Core scheduler.
+
+## Compatibility and deliberate limits
+
+`NoteBlock`, page-size constants, legacy image handling and older archive readers support existing libraries and backups. The internal Folio identifiers and path-based instance-lock prefix are also retained for compatibility.
+
+The current interface has no network services, account, synchronization provider, HTML execution or embedded web renderer. Markdown shorthand becomes bounded structured text; code-looking text remains literal. New persistence and media changes should preserve that narrow surface and avoid introducing packages for operations already covered by the platform.
+
+## Verification
+
+The Core harness covers old schemas, text and tag bounds, review behavior, independent copies, both collections, atomic storage, conflicts, corruption, image ownership, interruption, backup/restore and portable migration. The Windows UI harness covers editing behavior, layout, text formatting, galleries and codecs, feed switching, review visibility, profile identity, error handling, welcome lifecycle and width preference persistence.
+
+Both are ordinary executable programs with nonzero failure exit codes. Run the exact commands in [CONTRIBUTING.md](../CONTRIBUTING.md); `dotnet test` alone does not execute these harnesses. Every run creates an isolated synthetic directory. UI previews render actual application controls offscreen and do not establish native desktop or monitor behavior. [VERIFICATION.md](VERIFICATION.md) records the latest checked release and its practical limits. [ALGORITHM.md](../src/Folio.Core/ALGORITHM.md) details saved formats and scheduling.
+
+The Windows CI workflow checks out source with read-only repository permissions and no persisted Git credentials, installs .NET 10, builds, runs both harnesses and publishes a framework-dependent Windows x64 executable. Artifact inputs are individually listed; runtime data, synthetic libraries and diagnostics are not uploaded. CI creates no GitHub Release and never modifies an installed notebook.

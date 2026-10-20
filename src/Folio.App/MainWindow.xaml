@@ -1,0 +1,51 @@
+<Window x:Class="Folio.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Folio.App" xmlns:controls="clr-namespace:Folio.App.Controls" Title="ClearNote" Width="678" Height="21cm" MinWidth="678" MaxWidth="678" MinHeight="460" WindowStartupLocation="CenterScreen" FontFamily="{x:Static local:AppTypography.Text}" FontSize="13" Foreground="{StaticResource Ink}" Background="White" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Grayscale" Closing="Window_Closing" PreviewKeyDown="Window_KeyDown">
+    <Grid x:Name="Root" Background="White" SnapsToDevicePixels="True" UseLayoutRounding="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="52" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+        </Grid.RowDefinitions>
+        <Border Background="White" Margin="12,0" Padding="18,0" BorderBrush="#EFF0F1" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="NotesButton" Content="Notes" Click="Notes_Click" Style="{StaticResource QuietButton}" Width="58" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" FontWeight="SemiBold" ToolTip="All notes" />
+                    <Button x:Name="ReviewButton" Content="Review" Click="Review_Click" Style="{StaticResource QuietButton}" Width="68" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Review by tag" />
+                    <Button x:Name="MemoButton" Content="Memo" Click="Memo_Click" Style="{StaticResource QuietButton}" Width="54" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Everyday reference" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="SearchButton" Click="Search_Click" Style="{StaticResource QuietButton}" Width="32" Height="32" Padding="6" ToolTip="Search notes" AutomationProperties.Name="Search notes" />
+                    <Button x:Name="MoreButton" Content="···" Click="More_Click" Style="{StaticResource QuietButton}" Width="32" Height="32" Padding="0" FontSize="20" ToolTip="More options" AutomationProperties.Name="More options" />
+                </StackPanel>
+                <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=SearchButton}" Placement="Bottom" AllowsTransparency="True" StaysOpen="False">
+                    <Border Background="White" BorderBrush="#E5E5E5" BorderThickness="1" CornerRadius="9" Padding="12" Margin="0,4,0,0" Width="260">
+                        <TextBox x:Name="SearchBox" Padding="0" Background="Transparent" BorderThickness="0" FontSize="14" TextChanged="Search_Changed" PreviewKeyDown="Search_KeyDown" ToolTip="Search notes" AutomationProperties.Name="Search notes" />
+                    </Border>
+                </Popup>
+            </Grid>
+        </Border>
+        <Border x:Name="ComposerRegion" Grid.Row="1" Margin="12,0" Padding="18,15,18,12" Style="{StaticResource ContentRegion}" BorderBrush="#EFF0F1" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <controls:NoteEditor x:Name="Composer" MinHeight="68" MaxHeight="180" HorizontalAlignment="Stretch" />
+                <Grid x:Name="ComposerMediaHost" />
+                <DockPanel Margin="-7,8,-4,0" LastChildFill="False">
+                    <Button x:Name="PostButton" DockPanel.Dock="Right" Content="Post" Click="Post_Click" Style="{StaticResource QuietButton}" Width="52" Height="31" Padding="6,4" FontSize="13" Foreground="{StaticResource Muted}" IsEnabled="False" Focusable="False" ToolTip="Post note · Ctrl+Enter" AutomationProperties.Name="Post note" />
+                    <Button x:Name="ImageButton" Click="Image_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Add images" AutomationProperties.Name="Add images" />
+                    <Button x:Name="TagButton" Click="Tag_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Add a tag" AutomationProperties.Name="Add a tag" />
+                    <Button x:Name="BoldButton" Content="B" Click="Bold_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" FontWeight="Bold" Focusable="False" ToolTip="Bold · Ctrl+B" AutomationProperties.Name="Bold" />
+                    <Button x:Name="ItalicButton" Content="I" Click="Italic_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" FontStyle="Italic" Focusable="False" ToolTip="Italic · Ctrl+I" AutomationProperties.Name="Italic" />
+                    <Button x:Name="HeadingButton" Content="H" Click="Heading_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Heading" AutomationProperties.Name="Heading" />
+                    <Button x:Name="BulletsButton" Content="•" Click="Bullets_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Bulleted list" AutomationProperties.Name="Bulleted list" />
+                    <Button x:Name="NumberingButton" Content="1." Click="Numbering_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Numbered list" AutomationProperties.Name="Numbered list" />
+                    <Button x:Name="ForegroundButton" Content="A" Click="Foreground_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Text color" AutomationProperties.Name="Text color" />
+                    <Button x:Name="HighlightButton" Content="▧" Click="Highlight_Click" Style="{StaticResource ToolButton}" Width="31" Height="31" Focusable="False" ToolTip="Selected text background" AutomationProperties.Name="Selected text background" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+        <TextBlock Grid.Row="2" x:Name="ErrorStatus" Foreground="#9C4848" FontSize="11" Margin="35,8,35,0" TextWrapping="Wrap" Visibility="Collapsed" />
+        <controls:FeedView Grid.Row="3" x:Name="NotesFeed" Margin="12,0" />
+        <Border x:Name="ColumnEdges" Grid.RowSpan="4" Margin="12,0" Panel.ZIndex="1" BorderBrush="#EFF0F1" BorderThickness="1,0,1,0" IsHitTestVisible="False" />
+    </Grid>
+</Window>

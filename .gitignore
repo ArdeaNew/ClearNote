@@ -1,0 +1,60 @@
+# Portable programs and locally generated deliverables
+/app/
+/packages/
+/outputs/
+/checks/
+/work/
+**/work/
+**/checks/
+**/outputs/
+
+# Private notebook data, imported media, recovery saves and diagnostics
+**/[Ll]og/
+**/[Dd]ata/
+**/[Bb]ackups/
+**/[Dd]iagnostics/
+library.json
+library.previous.json
+draft.json
+draft.previous.json
+memo-draft.json
+memo-draft.previous.json
+profile.json
+delete.pending.json
+portable-storage.json
+
+# .NET and editor output
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pdb
+*.cache
+*.tmp
+*.log
+TestResults/
+*.nupkg
+*.snupkg
+
+# Local credentials and signing material; use repository secrets in CI
+.env
+.env.*
+!.env.example
+**/credentials.json
+**/secrets.json
+**/appsettings.*.local.json
+*.pfx
+*.p12
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
