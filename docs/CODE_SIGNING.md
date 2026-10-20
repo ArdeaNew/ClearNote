@@ -1,16 +1,16 @@
 # Code signing policy
 
-Status: the SignPath Foundation application has not yet been submitted. Production signing is unavailable. Existing releases are unsigned. This integration does not imply that a certificate has been issued or that any release is signed.
+Status: the SignPath Foundation application was submitted on October 20, 2026 and is awaiting review. Production signing is unavailable. Existing releases are unsigned. This integration does not imply that a certificate has been issued or that any release is signed.
 
 ## Ownership and approval
 
 Author, reviewer and release approver: [ArdeaNew](https://github.com/ArdeaNew). Source repository: [ArdeaNew/ClearNote](https://github.com/ArdeaNew/ClearNote).
 
-The project is preparing an application for free code signing provided by [SignPath.io](https://about.signpath.io), with a certificate provided by [SignPath Foundation](https://signpath.org). These services are subject to the Foundation's acceptance; no certificate has been granted to ClearNote yet.
+The project has applied for free code signing provided by [SignPath.io](https://about.signpath.io), with a certificate provided by [SignPath Foundation](https://signpath.org). These services are subject to the Foundation's acceptance; no certificate has been granted to ClearNote yet.
 
 After the Foundation accepts the project, configure a production signing policy with its approved certificate, manual approval, verified origin, and the GitHub.com trusted build system. Restrict the repository URL to this repository and the allowed branch to `main`. Use GitHub-hosted runners. Review build scripts together with application changes; origin verification cannot establish the safety of arbitrary downloaded code.
 
-The CI identity must have only Submitter permission for this policy. Human maintainers approve signing requests in SignPath; the CI token must not have Approver or administrator permissions. Use [signpath-artifact.xml](signpath-artifact.xml) as the artifact configuration. It signs only the ClearNote executable inside the uploaded ZIP.
+The CI identity must have only Submitter permission for this policy. Human maintainers approve signing requests in SignPath; the CI token must not have Approver or administrator permissions. Maintainers must use multi-factor authentication for both GitHub and SignPath. Use [signpath-artifact.xml](signpath-artifact.xml) as the artifact configuration. It signs only the ClearNote executable inside the uploaded ZIP.
 
 ## GitHub configuration
 
