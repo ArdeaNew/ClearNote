@@ -30,6 +30,8 @@ public sealed class FeedView : UserControl
     public UserProfile Profile { get; set; } = new();
     public Func<CardDocument, bool>? DeleteNote { get; set; }
     public event Action<CardDocument>? CardViewed;
+    public event Action? ProfileRequested;
+    public event Action? AvatarChangeRequested;
     public event Action<Exception>? InputRejected;
     public IReadOnlyList<FeedNoteCard> RenderedCards => _renderedCards.AsReadOnly();
 
@@ -156,6 +158,8 @@ public sealed class FeedView : UserControl
                     DeleteNote = note => DeleteNote?.Invoke(note) ?? false
                 };
                 card.Deleted += RemoveCard;
+                card.ProfileRequested += RequestProfile;
+                card.AvatarChangeRequested += RequestAvatarChange;
                 card.Body.InputRejected += error => InputRejected?.Invoke(error);
                 card.InputRejected += error => InputRejected?.Invoke(error);
                 card.EditingChanged += QueueVisibleCheck;
@@ -173,10 +177,15 @@ public sealed class FeedView : UserControl
     {
         if (!_renderedCards.Remove(card)) return;
         card.Deleted -= RemoveCard;
+        card.ProfileRequested -= RequestProfile;
+        card.AvatarChangeRequested -= RequestAvatarChange;
         card.EditingChanged -= QueueVisibleCheck;
         _cardsPanel.Children.Remove(card);
         QueueVisibleCheck();
     }
+
+    private void RequestProfile() => ProfileRequested?.Invoke();
+    private void RequestAvatarChange() => AvatarChangeRequested?.Invoke();
 
     private Rect ViewportBounds()
     {

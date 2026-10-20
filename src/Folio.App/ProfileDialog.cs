@@ -115,7 +115,7 @@ internal sealed class ProfileDialog : Window
         UpdateAvatar();
     }
 
-    private void ChoosePicture()
+    internal void ChoosePicture()
     {
         try
         {

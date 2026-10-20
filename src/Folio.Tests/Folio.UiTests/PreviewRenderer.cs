@@ -37,10 +37,10 @@ internal static class PreviewRenderer
         var window = new MainWindow(store);
         try
         {
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Gallery-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Gallery")));
             var memo = (Button)window.FindName("MemoButton");
             memo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, memo));
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Memo-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Memo")));
         }
         finally { window.Close(); }
         Console.WriteLine("Synthetic gallery and Memo previews rendered: " + outputDirectory);
@@ -57,7 +57,7 @@ internal static class PreviewRenderer
         if (seed.Invoke(null, [store]) is not true || store.Cards.Count != 2)
             throw new IOException("The initial welcome library could not be prepared.");
         var window = new MainWindow(store);
-        try { Save(window, Path.Combine(outputDirectory, "ClearNote-Welcome-1.9.0.png")); }
+        try { Save(window, Path.Combine(outputDirectory, PreviewName("Welcome"))); }
         finally { window.Close(); }
         Console.WriteLine("Prepared local welcome library: " + libraryPath);
     }
@@ -68,7 +68,7 @@ internal static class PreviewRenderer
         var store = new LibraryStore(Path.Combine(dataRoot, "empty-feed", "Log", "Data"));
         store.Load();
         var window = new MainWindow(store);
-        try { Save(window, Path.Combine(outputDirectory, "ClearNote-Empty-1.9.0.png")); }
+        try { Save(window, Path.Combine(outputDirectory, PreviewName("Empty"))); }
         finally { window.Close(); }
     }
 
@@ -92,20 +92,20 @@ internal static class PreviewRenderer
         var window = new MainWindow(store);
         try
         {
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Feed-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Feed")));
             var feed = (FeedView)window.FindName("NotesFeed");
             var first = feed.RenderedCards[0];
             var firstShell = (Border)first.Content;
             // Illustrate the hover paint offscreen; no desktop pointer is moved or captured.
             firstShell.SetCurrentValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(247, 247, 247)));
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Hover-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Hover")));
             firstShell.ClearValue(Border.BackgroundProperty);
             var composerRegion = (Border)window.FindName("ComposerRegion");
             composerRegion.SetCurrentValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(247, 247, 247)));
-            Save(window, Path.Combine(outputDirectory, "ClearNote-ComposerHover-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("ComposerHover")));
             composerRegion.ClearValue(Border.BackgroundProperty);
             first.BeginEdit();
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Edit-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Edit")));
             first.CancelEdit();
             var profileDialog = (Window)Activator.CreateInstance(typeof(MainWindow).Assembly.GetType("Folio.App.ProfileDialog", true)!,
                 store, store.LoadProfile(), (Func<UserProfile, bool>)(_ => false))!;
@@ -113,24 +113,24 @@ internal static class PreviewRenderer
             {
                 var profileBody = (FrameworkElement)profileDialog.Content;
                 profileBody.Measure(new Size(380, double.PositiveInfinity));
-                RenderControl(profileBody, Path.Combine(outputDirectory, "ClearNote-Profile-1.9.0.png"), 380, (int)Math.Ceiling(profileBody.DesiredSize.Height));
+                RenderControl(profileBody, Path.Combine(outputDirectory, PreviewName("Profile")), 380, (int)Math.Ceiling(profileBody.DesiredSize.Height));
             }
             finally { profileDialog.Close(); }
             var menu = Descendants(feed.RenderedCards[0]).OfType<Button>()
-                .Select(button => button.ContextMenu).First(value => value != null)!;
-            RenderControl(menu, Path.Combine(outputDirectory, "ClearNote-Menu-1.9.0.png"), 180, 80);
+                .Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "More note options").ContextMenu!;
+            RenderControl(menu, Path.Combine(outputDirectory, PreviewName("Menu")), 180, 80);
             var composer = (NoteEditor)window.FindName("Composer");
             composer.InsertMarkdown("One clear thought. #Learning");
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Compose-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Compose")));
             Save(window, Path.Combine(dataRoot, "ClearNote-Short.png"), 662, 420);
             var review = (Button)window.FindName("ReviewButton");
             review.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, review));
             var reviewMenu = review.ContextMenu!;
             reviewMenu.IsOpen = false;
-            RenderControl(reviewMenu, Path.Combine(outputDirectory, "ClearNote-ReviewMenu-1.9.0.png"), 200, 164);
+            RenderControl(reviewMenu, Path.Combine(outputDirectory, PreviewName("ReviewMenu")), 200, 164);
             var learning = reviewMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "#Learning"));
             learning.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, learning));
-            Save(window, Path.Combine(outputDirectory, "ClearNote-Review-1.9.0.png"));
+            Save(window, Path.Combine(outputDirectory, PreviewName("Review")));
         }
         finally { window.Close(); }
         Console.WriteLine("Synthetic ClearNote previews rendered: " + outputDirectory);
@@ -155,6 +155,9 @@ internal static class PreviewRenderer
 
     private static CardDocument MakeCard(DateTimeOffset created, NoteContent content) =>
         new() { CreatedAt = created, UpdatedAt = created, Note = content };
+
+    private static string PreviewName(string view) =>
+        $"ClearNote-{view}-{typeof(MainWindow).Assembly.GetName().Version!.ToString(3)}.png";
 
     private static void Save(MainWindow window, string path, int width = 662, int height = 754) =>
         RenderControl((Grid)window.FindName("Root"), path, width, height);

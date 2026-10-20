@@ -63,6 +63,8 @@ public partial class MainWindow : Window
         NotesFeed.SaveNote = SaveNote;
         NotesFeed.DeleteNote = DeleteNote;
         NotesFeed.CardViewed += RecordView;
+        NotesFeed.ProfileRequested += EditProfile;
+        NotesFeed.AvatarChangeRequested += ChangeProfilePicture;
         NotesFeed.InputRejected += ShowInputError;
         LoadDraft();
         _ready = true;
@@ -441,9 +443,12 @@ public partial class MainWindow : Window
             SetError("profile", "Your profile could not be loaded. Notes are still available.", error);
         }
     }
-    private void EditProfile()
+    private void EditProfile() => ShowProfile(false);
+    private void ChangeProfilePicture() => ShowProfile(true);
+    private void ShowProfile(bool choosePicture)
     {
         var dialog = new ProfileDialog(_store, _profile, TryApplyProfile) { Owner = this };
+        if (choosePicture) dialog.Loaded += (_, _) => dialog.ChoosePicture();
         dialog.ShowDialog();
     }
     private bool TryApplyProfile(UserProfile profile)

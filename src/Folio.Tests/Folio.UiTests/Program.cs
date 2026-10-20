@@ -63,7 +63,7 @@ internal static class Program
         Check("Feed batch loading, viewport tracking and inline editing", FeedChecks.Run);
         Check("Markdown entry, native continuation and inline layout", EditorChecks.Run);
         Check("Images import, paste, persist and survive independent editing", () => MediaChecks.Run(_root));
-        Check("Large image galleries preserve proportions and navigate without trapping feed scroll", () => GalleryChecks.Run(_root));
+        Check("Compact image galleries preserve proportions and navigate without trapping feed scroll", () => GalleryChecks.Run(_root));
         Check("Memo keeps its own feed and drafts while sharing editing, search and identity", () => MemoChecks.Run(_root));
         Check("Hashtags complete natively and filter Review without repeat counts", TagFiltering);
         Check("Image-only composer drafts reopen and post into the feed", ComposerImages);

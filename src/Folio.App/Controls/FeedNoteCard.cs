@@ -35,6 +35,8 @@ public sealed class FeedNoteCard : UserControl
     public Func<CardDocument, bool>? DeleteNote { get; set; }
     internal event Action<FeedNoteCard>? Deleted;
     internal event Action? EditingChanged;
+    public event Action? ProfileRequested;
+    public event Action? AvatarChangeRequested;
     public event Action<Exception>? InputRejected;
 
     public FeedNoteCard(CardDocument card, LibraryStore? store = null, UserProfile? profile = null)
@@ -55,8 +57,23 @@ public sealed class FeedNoteCard : UserControl
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _avatar = CreateAvatar(profile);
-        _avatar.Margin = new Thickness(0, 0, 10, 0);
-        header.Children.Add(_avatar);
+        var avatarButton = MakeButton("", "Edit profile", new Thickness(0));
+        avatarButton.Content = _avatar;
+        avatarButton.Width = AvatarSize;
+        avatarButton.Height = AvatarSize;
+        avatarButton.Margin = new Thickness(0, 0, 12, 0);
+        avatarButton.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetAutomationId(avatarButton, "NoteAvatar-" + card.Id);
+        var profileMenu = new ContextMenu { FontFamily = AppTypography.Text, MinWidth = 180 };
+        var editProfile = new MenuItem { Header = "Edit profile", Icon = AppIcons.Create("edit", 16) };
+        editProfile.Click += (_, _) => ProfileRequested?.Invoke();
+        var changePicture = new MenuItem { Header = "Change picture", Icon = AppIcons.Create("image", 16) };
+        changePicture.Click += (_, _) => AvatarChangeRequested?.Invoke();
+        profileMenu.Items.Add(editProfile);
+        profileMenu.Items.Add(changePicture);
+        avatarButton.ContextMenu = profileMenu;
+        avatarButton.Click += (_, _) => ProfileRequested?.Invoke();
+        header.Children.Add(avatarButton);
         var identity = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var displayName = profile?.DisplayName;
         _author = new TextBlock
@@ -207,8 +224,9 @@ public sealed class FeedNoteCard : UserControl
     {
         var avatar = new Border
         {
-            Width = 32, Height = 32, CornerRadius = new CornerRadius(16),
-            VerticalAlignment = VerticalAlignment.Center, Clip = new EllipseGeometry(new Point(16, 16), 16, 16)
+            Width = AvatarSize, Height = AvatarSize, CornerRadius = new CornerRadius(AvatarSize / 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Clip = new EllipseGeometry(new Point(AvatarSize / 2, AvatarSize / 2), AvatarSize / 2, AvatarSize / 2)
         };
         AutomationProperties.SetName(avatar, "Author avatar");
         UpdateAvatar(avatar, profile);
@@ -233,7 +251,7 @@ public sealed class FeedNoteCard : UserControl
                 avatar.Child = new Image
                 {
                     Source = ImageAttachments.LoadPreview(_store.GetImagePath(image), 96),
-                    Width = 32, Height = 32, Stretch = Stretch.UniformToFill
+                    Width = AvatarSize, Height = AvatarSize, Stretch = Stretch.UniformToFill
                 };
                 return;
             }
@@ -242,7 +260,7 @@ public sealed class FeedNoteCard : UserControl
                 // The author identity must remain readable even when a local avatar is unavailable.
             }
         }
-        var mark = AppIcons.Create("brand", 20);
+        var mark = AppIcons.Create("brand", 30);
         mark.HorizontalAlignment = HorizontalAlignment.Center;
         mark.VerticalAlignment = VerticalAlignment.Center;
         avatar.Child = mark;
@@ -400,6 +418,7 @@ public sealed class FeedNoteCard : UserControl
     private static Binding ParentBinding(string property) => new(property)
     { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) };
 
+    private const double AvatarSize = 42;
     private static readonly Brush Ink = FrozenBrush(15, 20, 25);
     private static readonly Brush Muted = FrozenBrush(83, 100, 113);
     private static readonly Brush Line = FrozenBrush(239, 240, 241);

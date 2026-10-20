@@ -18,25 +18,27 @@ public static class GalleryChecks
         store.Load();
         var landscape = ImageAttachments.ImportBitmap(Picture(1200, 800), store);
         var portrait = ImageAttachments.ImportBitmap(Picture(900, 1200), store);
-        LargeImagesAndNavigation(store, landscape, portrait);
+        CompactImagesAndNavigation(store, landscape, portrait);
         PortraitsFillTheirFrames(store, portrait);
         SingleImageProportions(store, landscape, portrait);
+        PreviewBoundsAcrossColumnSizes(store, landscape, portrait);
         EditableGallery(store, landscape, portrait);
         VerticalWheelPassesToFeed(store, landscape, portrait);
         MissingImageKeepsItsPlace(store, landscape);
     }
 
-    private static void LargeImagesAndNavigation(LibraryStore store, NoteImage landscape, NoteImage portrait)
+    private static void CompactImagesAndNavigation(LibraryStore store, NoteImage landscape, NoteImage portrait)
     {
         var panel = new AttachmentPanel(store);
-        panel.Load([landscape, portrait], editable: false);
+        panel.Load([landscape, portrait, landscape, portrait], editable: false);
         Layout(panel, 540);
         var frames = Frames(panel);
         var scroll = Descendants(panel).OfType<ScrollViewer>().Single();
-        Assert(frames.Length == 2 && frames[0].ActualWidth > 540 * 0.8 && frames[1].ActualWidth > 540 * 0.5,
-            "Landscapes must use most of the reading width while a portrait keeps a substantial natural-width preview.");
-        Assert(frames.All(frame => frame.ActualHeight <= 440) && scroll.ScrollableWidth > 200,
-            "A large multi-image gallery must have a bounded height and real horizontal overflow.");
+        Assert(frames.Length == 4 && frames[0].ActualWidth is >= 290 and <= 300 &&
+               frames[1].ActualHeight is >= 270 and <= 280,
+            "Mixed galleries must use compact, readable photographs rather than filling the whole reading column.");
+        Assert(frames.All(frame => frame.ActualWidth <= 300 && frame.ActualHeight <= 280) && scroll.ScrollableWidth > 200,
+            "Each photograph must fit the compact preview bounds while a larger collection still scrolls horizontally.");
         Assert(frames.All(frame => frame.Child is Image { Stretch: Stretch.Uniform }),
             "Every gallery preview must preserve the entire picture without cropping its pixels.");
         var next = Button(panel, "Next image");
@@ -44,20 +46,26 @@ public static class GalleryChecks
         Assert(next.Visibility == Visibility.Visible && previous.Visibility == Visibility.Collapsed,
             "Only a useful next-image arrow must appear at the start of a gallery.");
         Click(next); panel.UpdateLayout();
-        Assert(scroll.HorizontalOffset > 0 && previous.Visibility == Visibility.Visible && next.Visibility == Visibility.Collapsed,
-            "Next must reveal the complete second image and offer a route back.");
+        Assert(scroll.HorizontalOffset > 0 && previous.Visibility == Visibility.Visible && next.Visibility == Visibility.Visible,
+            "Next must advance through compact pictures and offer both useful directions in the middle of a gallery.");
+        PressKey(panel, Key.End); panel.UpdateLayout();
+        Assert(Math.Abs(scroll.HorizontalOffset - scroll.ScrollableWidth) < 1 && next.Visibility == Visibility.Collapsed,
+            "The last photograph must be reachable without leaving a redundant next-image control.");
         Click(previous); panel.UpdateLayout();
-        Assert(scroll.HorizontalOffset < 1, "Previous must return to the first image.");
+        Assert(scroll.HorizontalOffset < scroll.ScrollableWidth, "Previous must leave the final image and move back through the gallery.");
+        PressKey(panel, Key.Home); panel.UpdateLayout();
+        Assert(scroll.HorizontalOffset < 1, "Home must return to the first image.");
 
         Layout(panel, 602);
         frames = Frames(panel);
-        Assert(Math.Abs(frames[0].ActualWidth - 602 * 0.86) < 1 && Math.Abs(frames[1].ActualWidth - 330) < 1,
-            "A wider column must expand landscapes while retaining the full natural width of height-capped portraits.");
+        Assert(frames.All(frame => frame.ActualWidth <= 300 && frame.ActualHeight <= 280),
+            "Widening the reading column must not expand compact feed pictures into oversized photographs.");
         PressKey(panel, Key.Right); panel.UpdateLayout();
         Assert(scroll.HorizontalOffset > 0, "The focused gallery must support right-arrow navigation.");
         PressKey(panel, Key.Home); panel.UpdateLayout();
         Assert(scroll.HorizontalOffset < 1, "Home must return to the start without changing the note.");
-        Assert(panel.Capture().Select(image => image.AssetName).SequenceEqual(new[] { landscape.AssetName, portrait.AssetName }) &&
+        Assert(panel.Capture().Select(image => image.AssetName).SequenceEqual(new[]
+                   { landscape.AssetName, portrait.AssetName, landscape.AssetName, portrait.AssetName }) &&
                File.Exists(store.GetImagePath(landscape)) && File.Exists(store.GetImagePath(portrait)),
             "Resizing and gallery navigation must preserve image order, references and local files.");
     }
@@ -70,11 +78,10 @@ public static class GalleryChecks
         var frames = Frames(panel);
         var scroll = Descendants(panel).OfType<ScrollViewer>().Single();
         Assert(frames.All(frame => Math.Abs(frame.ActualWidth / frame.ActualHeight - 0.75) < 0.01 &&
-                                   frame.ActualHeight > 430 && frame.ActualWidth > 320),
-            "Portraits must fill large, naturally proportioned frames without broad letterbox sidebars.");
-        var secondStart = frames[1].TranslatePoint(new Point(), scroll).X;
-        Assert(secondStart > 0 && secondStart < scroll.ViewportWidth - 100 && scroll.ScrollableWidth > 1,
-            "The initial portrait view must reveal a meaningful part of the next photograph, rather than an empty frame.");
+                                   frame.ActualHeight is >= 270 and <= 280 && frame.ActualWidth is >= 200 and <= 220),
+            "Portraits must fill compact, naturally proportioned frames without broad letterbox sidebars.");
+        Assert(scroll.ScrollableWidth < 1 && Descendants(panel).OfType<Button>().All(button => button.Visibility == Visibility.Collapsed),
+            "Two compact portraits that fit the column must appear together without unnecessary gallery arrows.");
         Assert(frames.All(frame => frame.Child is Image { Stretch: Stretch.Uniform }),
             "Portrait previews must preserve every source pixel while filling their natural-ratio frames.");
     }
@@ -85,15 +92,52 @@ public static class GalleryChecks
         panel.Load([landscape], editable: false);
         Layout(panel, 602);
         var frame = Frames(panel).Single();
-        Assert(Math.Abs(frame.ActualWidth / frame.ActualHeight - 1.5) < 0.01 && frame.ActualWidth > 590,
-            "A single landscape photograph must retain its natural aspect while using the reading width.");
+        Assert(Math.Abs(frame.ActualWidth / frame.ActualHeight - 1.5) < 0.01 && frame.ActualWidth is >= 290 and <= 300,
+            "A single landscape photograph must retain its natural aspect in a compact frame.");
         Assert(Descendants(panel).OfType<Button>().All(button => button.Visibility == Visibility.Collapsed),
             "A single picture must not display unnecessary navigation.");
         panel.Load([portrait], editable: false);
         Layout(panel, 602);
         frame = Frames(panel).Single();
-        Assert(frame.ActualHeight <= 440 && Math.Abs(frame.ActualWidth / frame.ActualHeight - 0.75) < 0.01,
+        Assert(frame.ActualHeight <= 280 && Math.Abs(frame.ActualWidth / frame.ActualHeight - 0.75) < 0.01,
             "A portrait must retain its full aspect and stay within a sensible feed height.");
+    }
+
+    private static void PreviewBoundsAcrossColumnSizes(LibraryStore store, NoteImage landscape, NoteImage portrait)
+    {
+        var wide = ImageAttachments.ImportBitmap(Picture(1024, 32), store);
+        var tall = ImageAttachments.ImportBitmap(Picture(32, 1024), store);
+        var small = ImageAttachments.ImportBitmap(Picture(32, 24), store);
+        foreach (var image in new[] { landscape, portrait, wide, tall, small })
+        {
+            var panel = new AttachmentPanel(store);
+            panel.Load([image], editable: false);
+            foreach (var width in new[] { 160d, 480, 602, 2048 })
+            {
+                Layout(panel, width);
+                var frame = Frames(panel).Single();
+                var ratio = image.PixelWidth / (double)image.PixelHeight;
+                Assert(frame.ActualWidth > 0 && frame.ActualHeight > 0 && frame.ActualWidth <= Math.Min(width, 300) &&
+                       frame.ActualHeight <= 280 && Math.Abs(frame.ActualWidth / frame.ActualHeight - ratio) < 0.01,
+                    "Narrow and wide columns must preserve the whole picture within the same compact bounds, including extreme aspect ratios.");
+                Assert(frame.ActualWidth <= image.PixelWidth && frame.ActualHeight <= image.PixelHeight,
+                    "Small pictures must never be enlarged merely because the reading column has room.");
+            }
+        }
+
+        var gallery = new AttachmentPanel(store);
+        gallery.Load([landscape, portrait, wide, tall], editable: false);
+        Layout(gallery, 160);
+        var scroll = Descendants(gallery).OfType<ScrollViewer>().Single();
+        Assert(Frames(gallery).All(frame => frame.ActualWidth <= scroll.ViewportWidth && frame.ActualHeight <= 280),
+            "Every picture in a narrow gallery must fit the viewport without requiring two-dimensional scrolling.");
+        PressKey(gallery, Key.End); gallery.UpdateLayout();
+        Assert(scroll.HorizontalOffset > 0 && Button(gallery, "Next image").Visibility == Visibility.Collapsed,
+            "The last picture must remain reachable after shrinking the gallery.");
+        Layout(gallery, 2048);
+        Assert(scroll.ScrollableWidth < 1 && scroll.HorizontalOffset < 1 &&
+               Descendants(gallery).OfType<Button>().All(button => button.Visibility == Visibility.Collapsed),
+            "Growing a column until every picture fits must clear obsolete scroll offsets and navigation.");
     }
 
     private static void EditableGallery(LibraryStore store, NoteImage landscape, NoteImage portrait)

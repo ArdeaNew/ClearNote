@@ -10,9 +10,9 @@ A quiet, offline notebook for Windows. Capture ideas, keep everyday information 
 - **Memo** — a separate feed for addresses and everyday information, with its own draft and search.
 - **Review** — revisit learning notes by tag; a sufficiently visible note records one review per round. Memo stays outside review.
 - **Writing** — Markdown headings, emphasis, quotes and lists, with selected text colors and highlights. Code fences remain plain text.
-- **Images** — attach up to four pictures and browse them horizontally at their natural proportions. Imported files are copied; originals remain unchanged.
-- **Your identity** — choose a local username and avatar. No account is required.
-- **A comfortable window** — choose Wider or Narrower from the menu. ClearNote remembers the width; height remains resizable.
+- **Images** — attach up to four pictures in a compact gallery that keeps their natural proportions. Imported files are copied; originals remain unchanged.
+- **Your identity** — right-click an avatar to edit your name or change your picture. No account is required.
+- **A comfortable window** — start with a tall reading area and choose Wider or Narrower from the menu. ClearNote remembers the width; height remains resizable.
 
 The interface is English, with a white background and dark text. Latin text uses Consolas; Chinese text uses FangSong.
 
@@ -20,7 +20,7 @@ The interface is English, with a white background and dark text. Latin text uses
 
 | Notes | Memo |
 | --- | --- |
-| ![Notes with a large image gallery](docs/images/notes.png) | ![Memo with everyday information](docs/images/memo.png) |
+| ![Notes with a compact image gallery](docs/images/notes.png) | ![Memo with everyday information](docs/images/memo.png) |
 
 These images use demonstration data rendered with the application's own controls.
 

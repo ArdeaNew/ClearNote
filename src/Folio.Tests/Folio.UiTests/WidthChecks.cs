@@ -75,9 +75,43 @@ internal static class WidthChecks
         }
         finally { reopened.Close(); }
 
+        StartupHeightFitsWorkArea(root);
         InvalidSettingsArePreserved(root);
         FailedSettingsSavePreservesState(root);
         ReviewStateSurvives(root);
+    }
+
+    private static void StartupHeightFitsWorkArea(string root)
+    {
+        var areas = new[]
+        {
+            new Rect(0, 0, 1920, 1040),
+            new Rect(-1600, -900, 1600, 860),
+            new Rect(1280, 40, 853.333333333333, 440),
+            new Rect(0, 0, 520, 240)
+        };
+        for (var i = 0; i < areas.Length; i++)
+        {
+            var area = areas[i];
+            var store = Store(root, "startup-height-" + i);
+            var window = new MainWindow(store);
+            try
+            {
+                Invoke(window, "FitStartupToWorkArea", area);
+                Near(window.Height, area.Height - 24,
+                    "Startup must use the monitor's available height instead of keeping the shorter paper-sized default.");
+                Near(window.Top, area.Top + 12,
+                    "Startup must leave equal space above and below the window, including on negative-coordinate monitors.");
+                Assert(window.Top >= area.Top && window.Top + window.Height <= area.Bottom &&
+                    window.Left >= area.Left && window.Left + window.Width <= area.Right &&
+                    window.MinHeight <= window.Height && window.ResizeMode == ResizeMode.CanResize &&
+                    window.MinWidth == window.Width && window.MaxWidth == window.Width,
+                    "Startup must stay inside small or scaled work areas while preserving vertical resizing and the fixed width.");
+                Assert(!File.Exists(Path.Combine(Path.GetDirectoryName(store.RootPath)!, "window.json")),
+                    "Fitting the startup height must not create or change optional width preferences.");
+            }
+            finally { window.Close(); }
+        }
     }
 
     private static void InvalidSettingsArePreserved(string root)

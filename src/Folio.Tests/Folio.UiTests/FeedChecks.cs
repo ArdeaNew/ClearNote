@@ -18,6 +18,7 @@ public static class FeedChecks
         DoubleClickEditing();
         CompactInlineEditing();
         AuthorIdentity();
+        AvatarProfileActions();
         InlineSaveCancelAndComposer();
         DeleteAcceptance();
     }
@@ -324,6 +325,44 @@ public static class FeedChecks
         Assert(composer.PlainText.Trim() == "Unsent composer draft", "Inline edits must never replace the independent top composer draft.");
         allowSecond = true;
         Assert(feed.SavePendingEdits() && !second.IsEditing && second.Body.PlainText.Trim() == "Pending second", "Retrying a failed save must close the editor only after acceptance.");
+    }
+
+    private static void AvatarProfileActions()
+    {
+        var document = Card("A note whose author can be edited");
+        var feed = new FeedView { SaveNote = (_, _) => true };
+        var profileRequests = 0;
+        var pictureRequests = 0;
+        feed.ProfileRequested += () => profileRequests++;
+        feed.AvatarChangeRequested += () => pictureRequests++;
+        feed.Reset(_ => new[] { document }, false);
+        Layout(feed);
+        var card = feed.RenderedCards.Single();
+        var avatarButton = Descendants(card).OfType<Button>().Single(button =>
+            AutomationProperties.GetAutomationId(button) == "NoteAvatar-" + document.Id);
+        var avatar = (Border)avatarButton.Content;
+        Assert(avatar.ActualWidth == 42 && avatar.ActualHeight == 42 && avatar.Child is FrameworkElement { Width: 30, Height: 30 },
+            "The author picture must be clearly legible in a compact 42-pixel header with a larger default mark.");
+        Assert(avatarButton.Focusable && avatarButton.IsTabStop && AutomationProperties.GetName(avatarButton) == "Edit profile",
+            "The author picture must be a named, keyboard-focusable profile action.");
+        var actions = avatarButton.ContextMenu!.Items.OfType<MenuItem>().ToArray();
+        Assert(actions.Select(item => item.Header).SequenceEqual(new object[] { "Edit profile", "Change picture" }),
+            "Right-clicking an avatar must expose the two local identity actions through its standard context menu.");
+        DoubleClick(card, avatarButton);
+        DoubleClick(card, avatar, MouseButton.Right);
+        Assert(!card.IsEditing && profileRequests == 0 && pictureRequests == 0,
+            "Avatar mouse gestures must not open a note editor or trigger profile actions before a menu choice.");
+        avatarButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        actions[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        actions[1].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert(profileRequests == 2 && pictureRequests == 1 && !card.IsEditing,
+            "Click and context-menu choices must propagate independently through the feed to its profile controller.");
+        card.BeginEdit();
+        card.Body.PlainText = "Keep this pending inline edit";
+        actions[1].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert(pictureRequests == 2 && card.IsEditing && card.Body.PlainText == "Keep this pending inline edit" &&
+            NoteText.PlainText(document).Contains("author can be edited", StringComparison.Ordinal),
+            "Opening avatar editing during a note edit must preserve the editor and its unsaved content.");
     }
 
     private static void DeleteAcceptance()

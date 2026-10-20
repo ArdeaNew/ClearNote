@@ -1,16 +1,16 @@
 # Verification
 
-ClearNote 1.9.0 — October 20, 2026.
+ClearNote 1.9.1 — October 20, 2026.
 
 ## Local checks
 
 The Release solution build completed with zero warnings and zero errors. All **50 Core check groups** and **26 WPF component check groups** passed. Checks run only against newly created synthetic data directories.
 
-Core checks cover schema 1–5 compatibility, independent copies, validation, atomic saves and interrupted operations, recovery snapshots, immutable image assets, deletion ownership, backup and restore, portable paths, two independent collection drafts, local profiles and review scheduling. The profile persistence extraction passed the same regression checks without a storage-format change.
+Core checks cover schema 1–5 compatibility, independent copies, validation, atomic saves and interrupted operations, recovery snapshots, immutable image assets, deletion ownership, backup and restore, portable paths, two independent collection drafts, local profiles and review scheduling. No storage-format change is introduced.
 
-WPF checks cover text, native lists, Undo/Redo, Markdown entry, colors and highlights, image import/paste, gallery navigation and proportions, scoped Notes/Memo behavior, tag completion, profile updates, review visibility, compact editing, readable colors and error recovery. Image checks include 65 encoder/pixel-format combinations and EXIF orientations 1–8. Optional formats still require their Windows codecs.
+WPF checks cover text, native lists, Undo/Redo, Markdown entry, colors and highlights, image import/paste, gallery navigation and proportions, scoped Notes/Memo behavior, tag completion, profile updates, review visibility, compact editing, readable colors and error recovery. Image checks include 65 encoder/pixel-format combinations and EXIF orientations 1–8. Optional formats still require their Windows codecs. Compact gallery checks cover single and multiple images, narrow and wide columns, extreme aspect ratios, small-source sizing and scrolling bounds. Avatar checks cover the larger presentation, both profile menu actions, keyboard focus and preservation of an active inline edit.
 
-Width checks verify an exact multiplication by 1.07 or 0.93 for each accepted action. Actions at the minimum or screen boundary are disabled rather than applying a partial step. The initial width remains 678 DIPs. The selected width is written atomically to Log/window.json only after an accepted change. Checks also cover restart, smaller screens, damaged, occupied or externally changed settings, and preservation of drafts, inline edits, search, scroll and review state. Percentage values are absent from the menu.
+Width checks verify an exact multiplication by 1.07 or 0.93 for each accepted action. Actions at the minimum or screen boundary are disabled rather than applying a partial step. The initial width remains 678 DIPs. The selected width is written atomically to Log/window.json only after an accepted change. Checks also cover restart, smaller screens, damaged, occupied or externally changed settings, and preservation of drafts, inline edits, search, scroll and review state. Percentage values are absent from the menu. Startup-height checks cover ordinary, short, scaled and negative-coordinate monitor work areas and keep equal top/bottom space without changing saved width preferences.
 
 ## Visual assets and examples
 

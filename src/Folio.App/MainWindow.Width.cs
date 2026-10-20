@@ -19,7 +19,7 @@ public partial class MainWindow
     private void FitStartupToWorkArea(Rect workArea)
     {
         var width = Math.Min(Width, Math.Max(280, workArea.Width - 24));
-        var height = Math.Min(Height, Math.Max(280, workArea.Height - 24));
+        var height = Math.Max(1, workArea.Height - 24);
         ApplyFixedWidth(width);
         MinHeight = Math.Min(MinHeight, height);
         Height = height;

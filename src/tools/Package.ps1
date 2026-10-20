@@ -3,13 +3,13 @@
 .SYNOPSIS
 Creates a verified, portable ClearNote package containing the app, README and license.
 .EXAMPLE
-.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.0
+.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.1
 #>
 [CmdletBinding()]
 param(
     [string]$OutputDirectory,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.9.0'
+    [string]$Version = '1.9.1'
 )
 
 $ErrorActionPreference = 'Stop'

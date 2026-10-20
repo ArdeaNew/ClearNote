@@ -12,6 +12,8 @@ namespace Folio.App.Controls;
 public sealed class AttachmentPanel : UserControl
 {
     private const double Gap = 8;
+    private const double PreviewMaxWidth = 300;
+    private const double PreviewMaxHeight = 280;
     private readonly LibraryStore _store;
     private readonly ScrollViewer _viewport;
     private readonly StackPanel _items;
@@ -181,17 +183,16 @@ public sealed class AttachmentPanel : UserControl
                 tileHeight = Math.Min(168, Math.Max(64, Math.Min(image.PixelHeight, width / ratio)));
                 tileWidth = Math.Min(width, Math.Max(96, Math.Min(280, tileHeight * ratio)));
             }
-            else if (_images.Count == 1)
-            {
-                tileWidth = Math.Min(width, Math.Min(Math.Max(40, image.PixelWidth), 440 * ratio));
-                tileHeight = Math.Max(40, tileWidth / ratio);
-            }
             else
             {
-                // Natural-width portraits reveal the next photograph itself instead of
-                // an empty letterbox; landscapes still use most of the reading width.
-                tileWidth = Math.Min(width * 0.86, 440 * ratio);
-                tileHeight = Math.Max(40, tileWidth / ratio);
+                // Keep feed pictures compact even after widening the window. Fit both
+                // dimensions without cropping, letterboxing or enlarging small sources.
+                var availableWidth = _images.Count == 1 ? width : width * 0.86;
+                var scale = Math.Min(1, Math.Min(
+                    Math.Min(availableWidth, PreviewMaxWidth) / Math.Max(1, image.PixelWidth),
+                    PreviewMaxHeight / Math.Max(1, image.PixelHeight)));
+                tileWidth = Math.Max(1, image.PixelWidth) * scale;
+                tileHeight = Math.Max(1, image.PixelHeight) * scale;
             }
             _frames[index].Width = Math.Max(1, tileWidth);
             _frames[index].Height = tileHeight;
