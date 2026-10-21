@@ -55,7 +55,8 @@ jobs:
           dotnet publish src/Folio.App/Folio.App.csproj -c Release -p:PublishProfile=Portable -m:1 -p:UseSharedCompilation=false --nologo -o ./app
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
           if (-not (Test-Path -LiteralPath ./app/ClearNote.exe -PathType Leaf)) { throw 'Portable executable is missing.' }
-          Copy-Item -LiteralPath ./README.md, ./LICENSE -Destination ./app
+          Copy-Item -LiteralPath ./docs/PORTABLE.md -Destination ./app/README.md
+          Copy-Item -LiteralPath ./LICENSE -Destination ./app
 
       - name: Upload portable build
         uses: actions/upload-artifact@v7

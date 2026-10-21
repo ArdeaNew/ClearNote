@@ -26,9 +26,10 @@ There are no external package references. Core targets `net10.0`; App and its UI
 | `Folio.App/App.xaml.cs` | Startup, English native dialogs, path-based instance locks, library opening and recovery | Scheduling equations |
 | `Folio.App/MainWindow*` | Composition of the shared feed, draft lifecycle, Notes/Review/Memo navigation and user commands | JSON serialization and asset deletion rules |
 | `MainWindow.Width`, `WindowWidthPreferences` | Work-area fitting, fixed-step width actions and atomic local window preferences | Notebook formats and portable library archives |
+| `WindowSystemMenu` | Native-frame menu policy, vertical resize command and window-lifetime hook cleanup | Feed navigation, drafts and persistent data |
 | `Folio.App/Controls/NoteEditor.cs` | Native continuous text editing and structured capture, Markdown entry, lists, text formatting and undo | Persistent file writes |
 | `FeedView`, `FeedNoteCard` | Batched feed rendering, visible-note events, inline editing and post presentation | Review-memory equations |
-| `AttachmentPanel`, `ImageAttachments` | Aspect-aware galleries, editor previews, clipboard and file decoding into independent PNG copies | Library recovery and backup policy |
+| `AttachmentPanel`, `ImageAttachments` | Same-height galleries, guarded asynchronous imports, independent PNG/JPEG copies and bounded frozen preview caching | Library recovery and backup policy |
 | `AppIcons`, `AppTypography`, `ProfileDialog`, `TextColorMenu`, `TagSuggestions` | Reusable presentation and local interaction | Storage formats |
 
 `LibraryStore` is a partial class because these operations share one lock, one serialization configuration, validation primitives and a coherent transaction boundary. Its partial files group responsibilities without creating independently writable repositories for the same files. Profile state reset is shared between initial load and restore.
@@ -67,11 +68,23 @@ The local identity is shared, rather than copied into every post. Changing a nam
 
 Drafts and profile have separate change tracking. A damaged draft or profile must not disable healthy saved notes, and saving a note must not silently overwrite external draft or profile edits. Backup validates the combined state and rechecks all inspected files before publishing an archive. Restore validates and stages the complete archive before moving an existing healthy library.
 
-Images are imported before notes or drafts refer to them. App decodes, applies orientation and creates an independent normalized PNG. Core validates encoded bytes and dimensions, assigns an immutable SHA256 filename and ensures the reference resolves within the asset directory. Equal bytes may share one file.
+Images are imported before notes or drafts refer to them. App validates and fully decodes each selected file. Normal-orientation PNG/JPEG assets retain their encoded bytes only when they satisfy Core's strict portable-container validation. A Windows-readable source with trailing data, incomplete non-pixel framing or incompatible metadata is re-encoded from decoded pixels into a strict PNG; other formats and rotated images use the same normalization path. Core validation is not relaxed. Core assigns an immutable SHA256 filename and ensures the reference resolves within the asset directory. Equal bytes may share one file.
+
+Picker and paste-data capture remain on the UI thread. Clipboard bitmap capture detaches actual pixels while the provider and any lazy stream remain available; the caller's surface is neither frozen nor modified. Decoding encoded files, conversion, durable asset writes and thumbnail preparation run on a worker. A damaged PNG clipboard representation can fall back to a separately captured Bitmap before storing anything. Storage failures never trigger an alternate decode or a second asset write. The attachment panel owns its pending operation; publishing, collection replacement, deletion and restore wait for it, and a requested close finishes after the completed attachment joins its draft. Detached, frozen previews use a bounded memory cache; accessing an asset still validates its file before showing a cached preview.
+
+ImageFailureContext annotates original exceptions at source-read, decode, clipboard-capture and storage boundaries without wrapping or changing their types. Messages and bounded diagnostics use that stage plus native error codes. An unavailable stored asset is distinguished from an oversized or empty file; preview failures keep their references and render a recoverable placeholder.
 
 Explicit deletion first plans the removed note's managed assets and retains any asset referenced by another post, the profile or either collection's current or recoverable previous draft. A small durable intent lets restart finish interrupted cleanup. Both library snapshots are sanitized so recovery cannot resurrect deleted text. Only then are unused local pictures removed. Source files chosen for import and manually exported backup archives remain independent.
 
 The UI saves a dirty composer before deleting a note so ownership checks can see unsent image references. It saves pending edits and the departing draft before changing feeds. A failed save leaves the active feed and buffers available for retry. Review visibility events are counted once per round by App, then persisted through the Core scheduler.
+
+## Interaction events
+
+Events describe completed UI changes; synchronous callbacks remain responsible for accepting or rejecting persistence. A note does not announce a successful save until its durable callback succeeds and its editor returns to read-only presentation. FeedView forwards completed save/deletion events so the window can update derived tags and active filtering in place, without rebuilding unrelated editors or persisting their unfinished changes. Failed saves and cancelled edits do not emit content-change events.
+
+Import-state events protect command availability while a control owns background image work. The owning control completes or reports failure before its parent resumes navigation or a deferred close. Profile picture decoding uses the same background importer; the dialog owns its pending selection and preserves its previous durable profile until Save succeeds.
+
+WindowSystemMenu follows SourceInitialized, StateChanged and Closed, and refreshes before its native popup opens. It exposes only commands applicable to the current state, keeps native Close on the WPF Closing path, and removes its hook and event subscriptions at disposal. Native menu policy does not depend on notebook state. These local event relationships do not require a global event bus, service locator or Core dependency on WPF.
 
 ## Compatibility and deliberate limits
 

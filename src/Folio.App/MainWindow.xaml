@@ -46,6 +46,6 @@
         </Border>
         <TextBlock Grid.Row="2" x:Name="ErrorStatus" Foreground="#9C4848" FontSize="11" Margin="35,8,35,0" TextWrapping="Wrap" Visibility="Collapsed" />
         <controls:FeedView Grid.Row="3" x:Name="NotesFeed" Margin="12,0" />
-        <Border x:Name="ColumnEdges" Grid.RowSpan="4" Margin="12,0" Panel.ZIndex="1" BorderBrush="#EFF0F1" BorderThickness="1,0,1,0" IsHitTestVisible="False" />
+        <Border x:Name="ColumnEdges" Grid.RowSpan="5" Margin="12,0" Panel.ZIndex="1" BorderBrush="#EFF0F1" BorderThickness="1,0,1,0" IsHitTestVisible="False" />
     </Grid>
 </Window>

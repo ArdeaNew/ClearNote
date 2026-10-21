@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Folio.Core;
 using DocumentList = System.Windows.Documents.List;
 
@@ -17,11 +18,20 @@ public sealed class NoteEditor : UserControl
     private static readonly Color TextColor = Color.FromRgb(15, 20, 25);
     private static readonly Brush AutomaticForeground = FrozenBrush(TextColor);
     private static readonly double[] HeadingSizes = [30, 25, 22, 20, 19, 18];
+    private const double BodyLineHeight = 21;
+    private const double ParagraphGap = 2;
+    private static readonly DependencyProperty[] InsertionFormatting =
+    [TextElement.FontWeightProperty, TextElement.FontStyleProperty, TextElement.ForegroundProperty, TextElement.BackgroundProperty];
     private readonly RichTextBox _editor;
     private bool _loading;
     private bool _editing;
     private bool _executingListCommand;
+    private bool _executingBreakCommand;
     private bool _inlineLayout;
+    private bool _prefixCheckQueued;
+    private bool _checkingPrefix;
+    private bool _completingInput;
+    private Paragraph? _pendingPrefixParagraph;
 
     private static readonly HashSet<string> UnsupportedFormattingCommands =
     [
@@ -150,6 +160,32 @@ public sealed class NoteEditor : UserControl
         return content;
     }
 
+    /// <summary>Commit native queued typing before an explicit post, save or line break.</summary>
+    public void CompleteInput()
+    {
+        if (!_editing || _loading || _completingInput) return;
+        _completingInput = true;
+        try
+        {
+            // SelectAll's native handler flushes WPF's pending typing first. Forward-gravity
+            // bookmarks follow inserted/replaced text; restoring them leaves no selection change.
+            // This avoids a private WPF API, a clipboard operation or a nested dispatcher pump.
+            var start = _editor.Selection.Start.GetPositionAtOffset(0, LogicalDirection.Forward)!;
+            var end = _editor.Selection.End.GetPositionAtOffset(0, LogicalDirection.Forward)!;
+            var reversed = !_editor.Selection.IsEmpty && _editor.CaretPosition.CompareTo(_editor.Selection.Start) == 0;
+            var formatting = _editor.Selection.IsEmpty
+                ? InsertionFormatting.Select(property => (Property: property, Value: _editor.Selection.GetPropertyValue(property))).ToArray() : [];
+            ApplicationCommands.SelectAll.Execute(null, _editor);
+            _editor.Selection.Select(reversed ? end : start, reversed ? start : end);
+            // SelectAll clears native insertion formatting. Keep a user's pending bold/color choice.
+            foreach (var (property, value) in formatting)
+                if (value != DependencyProperty.UnsetValue && !Equals(value, _editor.Selection.GetPropertyValue(property)))
+                    _editor.Selection.ApplyPropertyValue(property, value);
+            CompletePendingPrefix();
+        }
+        finally { _completingInput = false; }
+    }
+
     public void FocusEditor() => _editor.Focus();
     public void Undo() { if (CanUndo) _editor.Undo(); }
     public void Redo() { if (CanRedo) _editor.Redo(); }
@@ -203,7 +239,7 @@ public sealed class NoteEditor : UserControl
             foreach (var paragraph in SelectedParagraphs().ToArray()) ApplyParagraphStyle(paragraph, "body");
             ExecuteListCommand(numbered ? EditingCommands.ToggleNumbering : EditingCommands.ToggleBullets);
             foreach (var paragraph in SelectedParagraphs().Where(paragraph => paragraph.Parent is ListItem))
-                paragraph.Margin = new Thickness(0, 0, 0, 5);
+                paragraph.Margin = new Thickness(0, 0, 0, ParagraphGap);
             foreach (var list in SelectedParagraphs().Select(paragraph => paragraph.Parent).OfType<ListItem>()
                          .Select(item => item.Parent).OfType<DocumentList>().Distinct()) ApplyListLayout(list);
         }
@@ -243,7 +279,7 @@ public sealed class NoteEditor : UserControl
 
     private void OnPreviewCanExecute(object sender, CanExecuteRoutedEventArgs e)
     {
-        if (e.Command == EditingCommands.EnterParagraphBreak)
+        if (e.Command == EditingCommands.EnterParagraphBreak || e.Command == EditingCommands.EnterLineBreak)
         {
             e.CanExecute = _editing;
             e.Handled = true;
@@ -257,7 +293,20 @@ public sealed class NoteEditor : UserControl
     private void OnPreviewExecuted(object sender, ExecutedRoutedEventArgs e)
     {
         if (IsUnsupportedFormatting(e.Command)) { e.Handled = true; return; }
-        if (e.Command == EditingCommands.EnterParagraphBreak) { e.Handled = true; BreakParagraph(); return; }
+        if (e.Command == EditingCommands.EnterParagraphBreak || e.Command == EditingCommands.EnterLineBreak)
+        {
+            if (_executingBreakCommand) return;
+            e.Handled = true;
+            ExecuteBreakCommand((RoutedUICommand)e.Command);
+            return;
+        }
+        // WPF routes a physical Space through an editing command rather than TextInput.
+        // Keep the text-composition handler too for IME and accessibility text input.
+        if (e.Command is RoutedCommand { Name: "Space" or "ShiftSpace" } space && space.OwnerType == typeof(EditingCommands))
+        {
+            QueuePrefixAfterNativeSpace();
+            return;
+        }
         if (_executingListCommand) return;
         if (e.Command == EditingCommands.ToggleBullets) { e.Handled = true; ToggleBullets(); }
         else if (e.Command == EditingCommands.ToggleNumbering) { e.Handled = true; ToggleNumbering(); }
@@ -281,11 +330,12 @@ public sealed class NoteEditor : UserControl
         else if (e.Text is "*" or "_" && TryConvertInlineDelimiter(e.Text)) e.Handled = true;
     }
 
-    private bool TryConvertParagraphPrefix()
+    private bool TryConvertParagraphPrefix(bool spaceInserted = false)
     {
         if (!_editing || !_editor.Selection.IsEmpty || _editor.CaretPosition.Paragraph is not { } paragraph) return false;
         var prefix = TextBetween(paragraph.ContentStart, _editor.CaretPosition);
-        var match = Regex.Match(prefix, @"^(?:(?<heading>#{1,6})|(?<ordered>[1-9][0-9]{0,6})(?<orderedDelimiter>[.)])?|(?<bullet>[-*+])|(?<quote>>))$", RegexOptions.CultureInvariant);
+        var pattern = @"^(?:(?<heading>#{1,6})|(?<ordered>[1-9][0-9]{0,6})(?<orderedDelimiter>[.)])?|(?<bullet>[-*+])|(?<quote>>))";
+        var match = Regex.Match(prefix, pattern + (spaceInserted ? " " : "$"), RegexOptions.CultureInvariant);
         if (!match.Success) return false;
         // A list already supplies its marker. Bare digits there are item content, not a new marker.
         if (match.Groups["ordered"].Success && !match.Groups["orderedDelimiter"].Success && paragraph.Parent is ListItem) return false;
@@ -296,12 +346,59 @@ public sealed class NoteEditor : UserControl
         _editor.BeginChange();
         try
         {
-            new TextRange(paragraph.ContentStart, _editor.CaretPosition).Text = "";
+            var remainingOffset = prefix.Length - match.Length;
+            var markerEnd = spaceInserted ? PointerAtTextOffset(paragraph.ContentStart, match.Length) : _editor.CaretPosition;
+            new TextRange(paragraph.ContentStart, markerEnd).Text = "";
             _editor.CaretPosition = paragraph.ContentStart;
             ApplyKindAtCaret(kind, match.Groups["heading"].Length, number);
+            if (remainingOffset > 0 && _editor.CaretPosition.Paragraph is { } current)
+            {
+                var next = PointerAtTextOffset(current.ContentStart, remainingOffset);
+                _editor.Selection.Select(next, next);
+            }
         }
         finally { _editor.EndChange(); }
         return true;
+    }
+
+    private void QueuePrefixAfterNativeSpace()
+    {
+        if (!_editing || _loading || !_editor.Selection.IsEmpty) return;
+        _pendingPrefixParagraph = _editor.CaretPosition.Paragraph;
+        if (_prefixCheckQueued) return;
+        _prefixCheckQueued = true;
+        // Native RichTextBox can batch typing at Background priority. Check after that batch,
+        // including text typed immediately after the marker, without moving a changed selection.
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            _prefixCheckQueued = false;
+            CompletePendingPrefix();
+            _pendingPrefixParagraph = null;
+        }));
+    }
+
+    private void CompletePendingPrefix()
+    {
+        if (_checkingPrefix || _pendingPrefixParagraph is not { } paragraph) return;
+        var attached = false;
+        for (DependencyObject? parent = paragraph; parent is not null; parent = LogicalTreeHelper.GetParent(parent))
+            if (ReferenceEquals(parent, _editor.Document)) { attached = true; break; }
+        if (!attached) { _pendingPrefixParagraph = null; return; }
+        _checkingPrefix = true;
+        var start = _editor.Selection.Start;
+        var end = _editor.Selection.End;
+        var reversed = !_editor.Selection.IsEmpty && _editor.CaretPosition.CompareTo(start) == 0;
+        try
+        {
+            _editor.Selection.Select(paragraph.ContentEnd, paragraph.ContentEnd);
+            TryConvertParagraphPrefix(spaceInserted: true);
+            _pendingPrefixParagraph = null;
+        }
+        finally
+        {
+            _editor.Selection.Select(reversed ? end : start, reversed ? start : end);
+            _checkingPrefix = false;
+        }
     }
 
     private bool TryConvertInlineDelimiter(string delimiter)
@@ -343,7 +440,39 @@ public sealed class NoteEditor : UserControl
     {
         if (!_editing || e.Key != Key.Enter || Keyboard.Modifiers != ModifierKeys.None) return;
         e.Handled = true;
-        BreakParagraph();
+        ExecuteBreakCommand(EditingCommands.EnterParagraphBreak);
+    }
+
+    private void ExecuteBreakCommand(RoutedUICommand command)
+    {
+        if (!_editing) return;
+        CompleteInput();
+        if (!_editor.IsKeyboardFocused)
+        {
+            // Offscreen hosts and explicit API commands still use the same public native pointers.
+            if (command == EditingCommands.EnterLineBreak) BreakLine(); else BreakParagraph();
+            return;
+        }
+        var current = _editor.CaretPosition.Paragraph;
+        var resetHeading = current is not null && HeadingLevel(current) > 0;
+        var atNumberLimit = current?.Parent is ListItem { Parent: DocumentList { MarkerStyle: TextMarkerStyle.Decimal } list } &&
+            (long)list.StartIndex + list.ListItems.Count > 1000000;
+        _editor.BeginChange();
+        try
+        {
+            // Let WPF flush its queued typing before splitting, preserve the native caret,
+            // and handle list continuation/exit as part of the same undo transaction.
+            _executingBreakCommand = true;
+            try { command.Execute(null, _editor); }
+            finally { _executingBreakCommand = false; }
+            if (command == EditingCommands.EnterParagraphBreak)
+            {
+                if (resetHeading && _editor.CaretPosition.Paragraph is { } next) ApplyParagraphStyle(next, "body");
+                if (atNumberLimit) SetParagraphKind("body");
+                if (_editor.CaretPosition.Paragraph?.Parent is ListItem { Parent: DocumentList continued }) ApplyListLayout(continued);
+            }
+        }
+        finally { _editor.EndChange(); }
     }
 
     private void BreakParagraph(bool exitBlankList = true)
@@ -381,6 +510,20 @@ public sealed class NoteEditor : UserControl
             _editor.Selection.Select(next, next);
             if (listAtLimit) SetParagraphKind("body");
             if (paragraph?.Parent is ListItem { Parent: DocumentList continuedList }) ApplyListLayout(continuedList);
+        }
+        finally { _editor.EndChange(); }
+    }
+
+    private void BreakLine()
+    {
+        if (!_editing) return;
+        _editor.BeginChange();
+        try
+        {
+            _editor.Selection.Text = "";
+            CollapseAtSelectionStart();
+            var next = _editor.CaretPosition.InsertLineBreak();
+            _editor.Selection.Select(next, next);
         }
         finally { _editor.EndChange(); }
     }
@@ -505,7 +648,7 @@ public sealed class NoteEditor : UserControl
     {
         var document = new FlowDocument
         {
-            FontFamily = AppTypography.Text, FontSize = 16, LineHeight = 24,
+            FontFamily = AppTypography.Text, FontSize = 16, LineHeight = BodyLineHeight,
             Foreground = AutomaticForeground, Background = Brushes.Transparent, PagePadding = new Thickness(0),
             ColumnWidth = double.PositiveInfinity, TextAlignment = TextAlignment.Left
         };
@@ -517,12 +660,7 @@ public sealed class NoteEditor : UserControl
             ApplyParagraphStyle(paragraph, item.Kind, item.HeadingLevel);
             foreach (var itemRun in item.Runs)
             {
-                var run = new Run(itemRun.Text);
-                if (itemRun.Bold) run.FontWeight = FontWeights.Bold;
-                if (itemRun.Italic) run.FontStyle = FontStyles.Italic;
-                if (itemRun.Foreground is not null) run.Foreground = ColorBrush(itemRun.Foreground);
-                if (itemRun.Background is not null) run.Background = ColorBrush(itemRun.Background);
-                paragraph.Inlines.Add(run);
+                AddStoredRun(paragraph, itemRun);
             }
             if (item.Kind is "bullet" or "ordered")
             {
@@ -535,7 +673,7 @@ public sealed class NoteEditor : UserControl
                     };
                     document.Blocks.Add(list);
                 }
-                paragraph.Margin = new Thickness(0, 0, 0, 5);
+                paragraph.Margin = new Thickness(0, 0, 0, ParagraphGap);
                 list.ListItems.Add(new ListItem(paragraph) { Margin = new Thickness(0) });
                 nextNumber = item.Number == int.MaxValue ? int.MaxValue : item.Number + 1;
             }
@@ -551,12 +689,30 @@ public sealed class NoteEditor : UserControl
         return document;
     }
 
+    private static void AddStoredRun(Paragraph paragraph, NoteRun item)
+    {
+        // Stored soft breaks stay native LineBreak elements after saving and reopening.
+        // A newline inside a Run is not a reliable editing boundary for the native caret.
+        var lines = item.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (index > 0) paragraph.Inlines.Add(new LineBreak());
+            if (lines[index].Length == 0) continue;
+            var run = new Run(lines[index]);
+            if (item.Bold) run.FontWeight = FontWeights.Bold;
+            if (item.Italic) run.FontStyle = FontStyles.Italic;
+            if (item.Foreground is not null) run.Foreground = ColorBrush(item.Foreground);
+            if (item.Background is not null) run.Background = ColorBrush(item.Background);
+            paragraph.Inlines.Add(run);
+        }
+    }
+
     private static void ApplyListLayout(DocumentList list)
     {
         list.FontFamily = AppTypography.Text;
         list.FontSize = 16;
         list.FontWeight = FontWeights.Normal;
-        list.Margin = new Thickness(0, 0, 0, 5);
+        list.Margin = new Thickness(0, 0, 0, ParagraphGap);
         list.MarkerOffset = 6;
         var last = (long)list.StartIndex + Math.Max(0, list.ListItems.Count - 1);
         var marker = list.MarkerStyle == TextMarkerStyle.Decimal ? last.ToString(CultureInfo.InvariantCulture) + "." : "\u2022";
@@ -574,8 +730,8 @@ public sealed class NoteEditor : UserControl
         var size = heading ? HeadingSizes[Math.Clamp(level, 1, 6) - 1] : 16;
         paragraph.FontSize = size;
         paragraph.FontWeight = heading ? FontWeights.SemiBold : FontWeights.Normal;
-        paragraph.LineHeight = heading ? Math.Max(29, size * 1.4) : 24;
-        paragraph.Margin = heading ? new Thickness(0, 8, 0, 6) : new Thickness(0, 0, 0, 5);
+        paragraph.LineHeight = heading ? Math.Max(24, size * 1.25) : BodyLineHeight;
+        paragraph.Margin = heading ? new Thickness(0, 6, 0, 4) : new Thickness(0, 0, 0, ParagraphGap);
         paragraph.BorderThickness = quote ? new Thickness(2, 0, 0, 0) : new Thickness(0);
         paragraph.BorderBrush = quote ? new SolidColorBrush(Color.FromRgb(210, 210, 210)) : null;
         paragraph.Padding = quote ? new Thickness(12, 0, 0, 0) : new Thickness(0);

@@ -463,8 +463,10 @@ public sealed partial class LibraryStore
         if (!IsWithin(path, Path.GetFullPath(assets))) throw new InvalidDataException("The image path is outside the library.");
         EnsureNoLinks(path);
         var info = new FileInfo(path);
-        if (!info.Exists || info.Length is <= 0 or > NoteImages.MaxImportBytes)
-            throw new InvalidDataException($"An imported image is missing or exceeds 20 MB: {image.AssetName}");
+        if (!info.Exists) throw new InvalidDataException($"An imported image is missing: {image.AssetName}");
+        if (info.Length <= 0) throw new InvalidDataException($"An imported image is empty: {image.AssetName}");
+        if (info.Length > NoteImages.MaxImportBytes)
+            throw new InvalidDataException($"An imported image exceeds 20 MB: {image.AssetName}");
         var bytes = File.ReadAllBytes(path);
         var extension = NoteImages.ValidateBytes(bytes, image.PixelWidth, image.PixelHeight);
         var expectedName = Convert.ToHexStringLower(SHA256.HashData(bytes)) + "." + extension;

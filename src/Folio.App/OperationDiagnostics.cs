@@ -25,6 +25,7 @@ internal static class OperationDiagnostics
             var line = JsonSerializer.Serialize(new
             {
                 time = DateTimeOffset.Now, operation, type = error.GetType().FullName,
+                imageStage = ImageFailureContext.Get(error)?.ToString(),
                 code = $"0x{error.HResult:X8}", detail
             }) + "\n";
             var bytes = Encoding.UTF8.GetBytes(line);

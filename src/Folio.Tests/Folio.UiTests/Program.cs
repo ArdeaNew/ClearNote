@@ -26,7 +26,7 @@ internal static class Program
         var application = new App();
         application.InitializeComponent();
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        if (args.Contains("--render") || args.Contains("--render-home") || args.Contains("--render-features") || args.Contains("--render-guide") || args.Contains("--prepare-welcome"))
+        if (args.Contains("--render") || args.Contains("--render-home") || args.Contains("--render-features") || args.Contains("--render-guide") || args.Contains("--render-showcase") || args.Contains("--prepare-welcome"))
         {
             var outputIndex = Array.IndexOf(args, "--output");
             var output = outputIndex >= 0 && outputIndex + 1 < args.Length ? args[outputIndex + 1] : Path.Combine(Environment.CurrentDirectory, "outputs");
@@ -37,6 +37,12 @@ internal static class Program
                     var libraryIndex = Array.IndexOf(args, "--library");
                     if (libraryIndex < 0 || libraryIndex + 1 >= args.Length) throw new ArgumentException("Choose a new library folder.");
                     PreviewRenderer.PrepareWelcome(Path.GetFullPath(args[libraryIndex + 1]), Path.GetFullPath(output));
+                }
+                else if (args.Contains("--render-showcase"))
+                {
+                    var photosIndex = Array.IndexOf(args, "--photos-dir");
+                    if (photosIndex < 0 || photosIndex + 1 >= args.Length) throw new ArgumentException("Choose a folder of example pictures.");
+                    ShowcaseRenderer.Render(_root, Path.GetFullPath(args[photosIndex + 1]), Path.GetFullPath(output));
                 }
                 else if (args.Contains("--render-guide")) GuideRenderer.Render(_root, Path.GetFullPath(output));
                 else if (args.Contains("--render-features")) PreviewRenderer.RenderFeatures(_root, Path.GetFullPath(output));
@@ -56,12 +62,14 @@ internal static class Program
         Check("ClearNote uses a fixed reading column with English controls", ComposerLayout);
         Check("Fixed width and resizable height fit smaller work areas", A5StartupFit);
         Check("Window width changes in whole steps and preserves preferences and active content", () => WidthChecks.Run(_root));
+        Check("Native window menus expose working state-specific commands and follow window lifetime", () => WindowMenuChecks.Run(_root));
         Check("Drafts survive restart and only posting enters the library", DraftAndPost);
         Check("Notes search finds full content without recording reviews", SearchNotes);
         Check("Review counts visible cards once per round and preserves later edits", ReviewFlow);
         Check("Markdown, colors and ordered list numbering survive reload", MarkdownAndColors);
         Check("Composite font maps CJK to FangSong and Latin to monospace", Typography);
         Check("Feed batch loading, viewport tracking and inline editing", FeedChecks.Run);
+        Check("Committed content, tag filters and rejected search remain synchronized", () => InteractionChecks.Run(_root));
         Check("Markdown entry, native continuation and inline layout", EditorChecks.Run);
         Check("Images import, paste, persist and survive independent editing", () => MediaChecks.Run(_root));
         Check("Compact image galleries preserve proportions and navigate without trapping feed scroll", () => GalleryChecks.Run(_root));
@@ -70,7 +78,13 @@ internal static class Program
         Check("Image-only composer drafts reopen and post into the feed", ComposerImages);
         Check("Attachment failures explain recovery and log safely without losing drafts", () => ErrorHandlingChecks.Run(_root));
         Check("Image codec compatibility, EXIF and safe large-photo conversion", () => ImageCompatibilityChecks.Run(_root));
+        Check("Readable JPEG and PNG source containers normalize into strict durable assets", () => ImageDecodeRobustnessChecks.Run(_root));
+        Check("Clipboard alternatives and detached bitmap snapshots survive provider failures", () => ImagePasteRobustnessChecks.Run(_root));
+        Check("Image failures identify their stage, preserve content and support retry", () => ImageFailureChecks.Run(_root));
+        Check("Background image imports preserve sources and reuse bounded frozen previews", () => ImageImportChecks.Run(_root));
+        Check("Async image imports preserve draft ownership, navigation and deferred close", () => ImageImportLifecycleChecks.Run(_root));
         Check("Local profiles, avatars and search preserve edits, history and source pictures", () => ProfileChecks.Run(_root));
+        Check("Profile image imports preserve candidate ownership, responsive controls and deferred close", () => ProfileImportChecks.Run(_root));
         Check("Welcome notes are ordinary durable content and never return after deletion", () => WelcomeChecks.Run(_root));
         Console.WriteLine($"\n{_count - _failed}/{_count} passed. Synthetic UI data: {_root}");
         application.Shutdown();
@@ -299,6 +313,11 @@ internal static class Program
             Assert(Get<Grid>(window, "Root").RowDefinitions.Last().Height == new GridLength(12) &&
                 Get<FeedView>(window, "NotesFeed").Margin.Left == 12 && Get<FeedView>(window, "NotesFeed").Margin.Right == 12,
                 "The bottom gutter must match the twelve-DIP side gutters.");
+            var edges = Get<Border>(window, "ColumnEdges");
+            var root = Get<Grid>(window, "Root");
+            Assert(Grid.GetRowSpan(edges) == root.RowDefinitions.Count &&
+                Math.Abs(edges.ActualHeight - root.ActualHeight) < 0.01,
+                "Reading-column borders must continue through the bottom gutter.");
             Assert(Get<Grid>(window, "Root").Background is SolidColorBrush { Color: var white } && white == Colors.White &&
                 Get<FeedView>(window, "NotesFeed").Background is SolidColorBrush { Color: var feedWhite } && feedWhite == Colors.White,
                 "The page and feed backgrounds must be pure white.");

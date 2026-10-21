@@ -1,9 +1,11 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Folio.App.Controls;
 using Folio.Core;
 
@@ -12,13 +14,19 @@ public static class MediaChecks
 {
     public static void Run(string? testRoot = null)
     {
-        var root = Path.Combine(testRoot ?? Path.GetTempPath(), "FolioNote.MediaChecks-" + Guid.NewGuid().ToString("N"));
-        var store = new LibraryStore(Path.Combine(root, "Data"));
-        store.Load();
-        var first = ImportAndReload(store);
-        PanelAndPaste(store, first);
-        InlineSaveAndCancel(store, first);
-        MissingImageKeepsReference(store, first);
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        try
+        {
+            var root = Path.Combine(testRoot ?? Path.GetTempPath(), "FolioNote.MediaChecks-" + Guid.NewGuid().ToString("N"));
+            var store = new LibraryStore(Path.Combine(root, "Data"));
+            store.Load();
+            var first = ImportAndReload(store);
+            PanelAndPaste(store, first);
+            InlineSaveAndCancel(store, first);
+            MissingImageKeepsReference(store, first);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
     }
 
     private static NoteImage ImportAndReload(LibraryStore store)
@@ -30,8 +38,9 @@ public static class MediaChecks
         encoder.Save(jpeg);
         var image = ImageAttachments.ImportBytes(jpeg.ToArray(), store);
         var path = store.GetImagePath(image);
-        Assert(image.PixelWidth == 96 && image.PixelHeight == 64 && path.EndsWith(".png", StringComparison.Ordinal),
-            "Imported file images must normalize to a portable PNG with their dimensions.");
+        Assert(image.PixelWidth == 96 && image.PixelHeight == 64 && path.EndsWith(".jpg", StringComparison.Ordinal) &&
+               File.ReadAllBytes(path).SequenceEqual(jpeg.ToArray()),
+            "Portable JPEG images must retain their original encoded copy and full dimensions without needless PNG conversion.");
         var preview = ImageAttachments.LoadPreview(path, 40);
         Assert(preview.IsFrozen && preview.PixelWidth <= 40 && preview.PixelHeight > 0,
             "Display images must decode to a bounded frozen thumbnail.");
@@ -57,7 +66,7 @@ public static class MediaChecks
         panel.Changed += (_, _) => changes++;
         panel.Load([image], editable: false);
         Layout(panel, 540);
-        Assert(panel.HasImages && panel.ActualHeight <= 230 && Descendants(panel).OfType<Image>().Any(),
+        Assert(panel.HasImages && panel.ActualHeight <= 318 && Descendants(panel).OfType<Image>().Any(),
             "Read-only attachments must show a compact picture beneath the text.");
         Assert(!Descendants(panel).OfType<Button>().Any(button => AutomationProperties.GetName(button).StartsWith("Remove image", StringComparison.Ordinal)),
             "Saved attachments must not show removal controls.");
@@ -71,7 +80,7 @@ public static class MediaChecks
             "Synthetic bitmap paste data must import without consulting the clipboard.");
         panel.AddImages(pasted);
         Layout(panel, 540);
-        Assert(panel.Count == 2 && changes == 1 && panel.ActualHeight <= 178, "Draft images must use a compact preview row and notify draft saving.");
+        Assert(panel.Count == 2 && changes == 1 && panel.ActualHeight <= 195, "Draft images must use a compact preview row and notify draft saving.");
         var remove = Descendants(panel).OfType<Button>().First(button => AutomationProperties.GetName(button) == "Remove image 2");
         remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert(panel.Count == 1 && changes == 2, "Removing a draft attachment must notify the save layer.");
@@ -115,13 +124,21 @@ public static class MediaChecks
         var card = feed.RenderedCards.Single();
         Assert(card.Attachments is { HasImages: true }, "A feed must pass its image store to rendered note cards.");
         card.BeginEdit();
+        var captured = 0;
+        var importErrors = new List<Exception>();
+        card.InputRejected += importErrors.Add;
+        feed.SaveNote = (_, content) => { captured = content.Images.Count; return false; };
         var pasted = new DataObject(DataFormats.Bitmap, Picture(32, 24));
         var args = new DataObjectPastingEventArgs(pasted, false, DataFormats.Bitmap) { RoutedEvent = DataObject.PastingEvent };
         card.Body.TextBox.RaiseEvent(args);
-        Assert(args.CommandCancelled && card.CaptureEdit().Images.Count == 2 && card.Body.PlainText.Trim() == "Original text",
-            "The actual paste boundary must attach a picture and preserve the existing text.");
-        var captured = 0;
-        feed.SaveNote = (_, content) => { captured = content.Images.Count; return false; };
+        Assert(args.CommandCancelled && card.Body.PlainText.Trim() == "Original text",
+            "An image paste must consume the native paste event without replacing the existing text.");
+        if (card.IsImportingImages)
+            Assert(!card.TrySave() && !feed.SavePendingEdits() && captured == 0,
+                "An outstanding paste import must block both inline and feed-wide saving before invoking persistence.");
+        WaitForImport(card.Attachments!);
+        Assert(importErrors.Count == 0 && card.CaptureEdit().Images.Count == 2,
+            "The dispatched paste continuation must attach its picture without an input failure.");
         Assert(!card.TrySave() && card.IsEditing && card.CaptureEdit().Images.Count == 2 && captured == 2,
             "A rejected save must preserve the image draft and pass attachments to the persistence callback.");
         Assert(document.Note!.Images.Count == 1, "Rejected inline persistence must retain the saved images.");
@@ -129,9 +146,11 @@ public static class MediaChecks
         Assert(!card.IsEditing && card.Attachments!.Count == 1 && document.Note.Images.Count == 1,
             "Cancel must restore saved images together with the saved text.");
         card.BeginEdit();
-        card.Attachments!.AddImages(ImageAttachments.TryHandlePaste(pasted, store, out var added) ? added : []);
+        var acceptedPaste = new DataObjectPastingEventArgs(pasted, false, DataFormats.Bitmap) { RoutedEvent = DataObject.PastingEvent };
+        card.Body.TextBox.RaiseEvent(acceptedPaste);
+        WaitForImport(card.Attachments!);
         feed.SaveNote = (_, _) => true;
-        Assert(card.TrySave() && !card.IsEditing && document.Note.Images.Count == 2 && card.Attachments.Count == 2,
+        Assert(acceptedPaste.CommandCancelled && importErrors.Count == 0 && card.TrySave() && !card.IsEditing && document.Note.Images.Count == 2 && card.Attachments!.Count == 2,
             "An accepted inline save must show its persisted attachments in read-only mode.");
 
         var storeless = new FeedNoteCard(document);
@@ -166,6 +185,27 @@ public static class MediaChecks
         element.Measure(new Size(width, double.PositiveInfinity));
         element.Arrange(new Rect(0, 0, width, element.DesiredSize.Height));
         element.UpdateLayout();
+    }
+
+    private static void WaitForImport(AttachmentPanel panel)
+    {
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        var frame = new DispatcherFrame();
+        var timedOut = false;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send) { Interval = TimeSpan.FromSeconds(10) };
+        timeout.Tick += (_, _) => { timedOut = true; frame.Continue = false; };
+        EventHandler completed = (_, _) => { if (!panel.IsImporting) frame.Continue = false; };
+        panel.ImportingChanged += completed;
+        try
+        {
+            timeout.Start();
+            if (panel.IsImporting) Dispatcher.PushFrame(frame);
+        }
+        finally { timeout.Stop(); panel.ImportingChanged -= completed; }
+        Assert(!timedOut && !panel.IsImporting, "Image paste must finish its UI continuation within the bounded dispatcher wait.");
+        var idle = new DispatcherFrame();
+        dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => idle.Continue = false));
+        Dispatcher.PushFrame(idle);
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)

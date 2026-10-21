@@ -31,10 +31,14 @@ public sealed class FeedNoteCard : UserControl
     public NoteEditor Body { get; }
     public AttachmentPanel? Attachments => _attachments;
     public bool IsEditing { get; private set; }
+    public bool IsImportingImages => _attachments?.IsImporting == true;
     public Func<CardDocument, NoteContent, bool>? SaveNote { get; set; }
     public Func<CardDocument, bool>? DeleteNote { get; set; }
     internal event Action<FeedNoteCard>? Deleted;
+    internal event Action<FeedNoteCard>? Saved;
     internal event Action? EditingChanged;
+    internal event Action? ImageImportChanged;
+    internal event Action? InputChanged;
     public event Action? ProfileRequested;
     public event Action? AvatarChangeRequested;
     public event Action<Exception>? InputRejected;
@@ -130,6 +134,7 @@ public sealed class FeedNoteCard : UserControl
             VerticalAlignment = VerticalAlignment.Top
         };
         AutomationProperties.SetAutomationId(Body.TextBox, "FeedNoteText-" + card.Id);
+        Body.Changed += (_, _) => InputChanged?.Invoke();
         _editToolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(-4, 0, 0, 9),
@@ -158,11 +163,13 @@ public sealed class FeedNoteCard : UserControl
         {
             _attachments = new AttachmentPanel(_store);
             content.Children.Add(_attachments);
-            Body.AttachmentPasteHandler = data =>
+            Body.AttachmentPasteHandler = _attachments.TryPasteImages;
+            _attachments.Changed += (_, _) => InputChanged?.Invoke();
+            _attachments.ImportFailed += error => InputRejected?.Invoke(new ImageInputException(error));
+            _attachments.ImportingChanged += (_, _) =>
             {
-                if (!ImageAttachments.TryHandlePaste(data, _store, out var images, ImageAttachments.MaxImages - _attachments.Count)) return false;
-                _attachments.AddImages(images);
-                return true;
+                _editToolbar.IsEnabled = !IsImportingImages;
+                ImageImportChanged?.Invoke();
             };
         }
 
@@ -180,6 +187,8 @@ public sealed class FeedNoteCard : UserControl
         _save.BorderBrush = FrozenBrush(225, 225, 225);
         _save.BorderThickness = new Thickness(0);
         _save.Click += (_, _) => TrySave();
+        if (_attachments is not null)
+            _attachments.ImportingChanged += (_, _) => _save.IsEnabled = !IsImportingImages;
         _editActions.Children.Add(cancel);
         _editActions.Children.Add(_save);
         content.Children.Add(_editActions);
@@ -255,9 +264,10 @@ public sealed class FeedNoteCard : UserControl
                 };
                 return;
             }
-            catch (Exception error) when (error is System.IO.InvalidDataException or System.IO.IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or FormatException or System.Runtime.InteropServices.COMException)
+            catch (Exception error) when (error is System.IO.InvalidDataException or System.IO.IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or ArgumentException or FormatException or System.Runtime.InteropServices.COMException)
             {
                 // The author identity must remain readable even when a local avatar is unavailable.
+                OperationDiagnostics.TryWrite(_store, "avatar-preview", error);
             }
         }
         var mark = AppIcons.Create("brand", 30);
@@ -277,17 +287,19 @@ public sealed class FeedNoteCard : UserControl
     public bool TrySave()
     {
         if (!IsEditing) return true;
-        if (_saving || SaveNote is null) return false;
+        if (_saving || IsImportingImages || SaveNote is null) return false;
         _saving = true;
         _save.IsEnabled = false;
         try
         {
+            Body.CompleteInput();
             var content = CaptureEdit();
             if (!SaveNote(Card, content)) return false;
             // The callback has durably accepted this content before the display changes.
             Card.Note = content;
             ShowReadOnly();
             EditingChanged?.Invoke();
+            Saved?.Invoke(this);
             return true;
         }
         finally { _saving = false; _save.IsEnabled = true; }
@@ -295,14 +307,14 @@ public sealed class FeedNoteCard : UserControl
 
     public void CancelEdit()
     {
-        if (!IsEditing || _saving) return;
+        if (!IsEditing || _saving || IsImportingImages) return;
         ShowReadOnly();
         EditingChanged?.Invoke();
     }
 
     private void TryDelete()
     {
-        if (_saving || DeleteNote is null || !DeleteNote(Card)) return;
+        if (_saving || IsImportingImages || DeleteNote is null || !DeleteNote(Card)) return;
         Deleted?.Invoke(this);
     }
 
@@ -323,11 +335,11 @@ public sealed class FeedNoteCard : UserControl
         _shell.BorderBrush = Line;
     }
 
-    private void PickImages()
+    private async void PickImages()
     {
         if (!IsEditing || _store is null || _attachments is null) return;
-        try { _attachments.PickImages(Window.GetWindow(this)); }
-        catch (Exception error) when (error is System.IO.InvalidDataException or System.IO.IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or FormatException or System.Runtime.InteropServices.COMException)
+        try { await _attachments.PickImagesAsync(Window.GetWindow(this)); }
+        catch (Exception error)
         { InputRejected?.Invoke(new ImageInputException(error)); }
     }
 
@@ -352,7 +364,7 @@ public sealed class FeedNoteCard : UserControl
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (IsEditing) return;
-        if (_attachments is { Count: > 1 } && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        if (_attachments is { HasImages: true } && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
             for (var current = e.OriginalSource as DependencyObject; current is not null && current != this; current = ParentOf(current))
                 if (ReferenceEquals(current, _attachments)) return;
         // A read-only RichTextBox still handles the wheel; route it to the feed instead.
@@ -383,10 +395,10 @@ public sealed class FeedNoteCard : UserControl
         return button;
     }
 
-    internal static Button MakeButton(string label, string name, Thickness padding)
+    internal static Button MakeButton(string label, string name, Thickness padding, double cornerRadius = 6)
     {
         var shell = new FrameworkElementFactory(typeof(Border)) { Name = "Shell" };
-        shell.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        shell.SetValue(Border.CornerRadiusProperty, new CornerRadius(cornerRadius));
         shell.SetBinding(Border.BackgroundProperty, ParentBinding(nameof(Button.Background)));
         shell.SetBinding(Border.BorderBrushProperty, ParentBinding(nameof(Button.BorderBrush)));
         shell.SetBinding(Border.BorderThicknessProperty, ParentBinding(nameof(Button.BorderThickness)));

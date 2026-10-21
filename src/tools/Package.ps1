@@ -3,13 +3,13 @@
 .SYNOPSIS
 Creates a verified, portable ClearNote package containing the app, README and license.
 .EXAMPLE
-.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.1
+.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.4
 #>
 [CmdletBinding()]
 param(
     [string]$OutputDirectory,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.9.1'
+    [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +17,13 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $sourceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    [xml]$metadata = Get-Content -LiteralPath (Join-Path $sourceRoot 'Folio.App\Folio.App.csproj') -Raw
+    $Version = [string]$metadata.Project.PropertyGroup.Version
+    if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
+        throw 'The application project must declare a valid package version.'
+    }
+}
 $workRoot = Join-Path $sourceRoot 'work'
 $stagingRoot = Join-Path $workRoot ('package-' + [Guid]::NewGuid().ToString('N'))
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -31,7 +38,7 @@ if (Test-Path -LiteralPath $archivePath) {
 
 $inputs = @(
     [pscustomobject]@{ Source = Join-Path $projectRoot 'app\ClearNote.exe'; Name = 'ClearNote.exe' }
-    [pscustomobject]@{ Source = Join-Path $projectRoot 'README.md'; Name = 'README.md' }
+    [pscustomobject]@{ Source = Join-Path $projectRoot 'docs\PORTABLE.md'; Name = 'README.md' }
     [pscustomobject]@{ Source = Join-Path $projectRoot 'LICENSE'; Name = 'LICENSE' }
 )
 foreach ($inputFile in $inputs) {
@@ -41,6 +48,12 @@ foreach ($inputFile in $inputs) {
     $inputFile | Add-Member -NotePropertyName SHA256 -NotePropertyValue (
         Get-FileHash -LiteralPath $inputFile.Source -Algorithm SHA256
     ).Hash
+}
+$executable = Get-Item -LiteralPath $inputs[0].Source
+$numericVersion = ($Version -split '[-+]')[0]
+if ($executable.VersionInfo.ProductName -ne 'ClearNote' -or
+    ([version]$executable.VersionInfo.FileVersion).ToString(3) -ne $numericVersion) {
+    throw 'The executable product and version must match the requested package.'
 }
 
 function Remove-PackageStaging {

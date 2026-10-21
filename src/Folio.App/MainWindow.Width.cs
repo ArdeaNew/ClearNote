@@ -11,9 +11,6 @@ public partial class MainWindow
     {
         base.OnSourceInitialized(e);
         FitStartupToWorkArea(WidthWorkArea());
-        var handle = new WindowInteropHelper(this).Handle;
-        // Width changes use the menu; the native frame continues to allow vertical resizing.
-        SetWindowLong(handle, -16, GetWindowLong(handle, -16) & ~0x00010000);
     }
 
     private void FitStartupToWorkArea(Rect workArea)
@@ -78,10 +75,6 @@ public partial class MainWindow
         return new Rect(topLeft, bottomRight);
     }
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
-    private static extern int GetWindowLong(IntPtr handle, int index);
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
-    private static extern int SetWindowLong(IntPtr handle, int index, int value);
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

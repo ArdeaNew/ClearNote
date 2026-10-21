@@ -1,9 +1,11 @@
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Folio.App.Controls;
 using Folio.Core;
 
@@ -16,8 +18,16 @@ internal sealed class ProfileDialog : Window
     private readonly Func<UserProfile, bool> _save;
     private readonly Border _avatar;
     private readonly TextBlock _status;
+    private readonly Button _choosePicture;
+    private readonly Button _removePicture;
+    private readonly Button _accept;
+    private readonly Button _cancel;
     private NoteImage? _avatarImage;
+    private bool _closeAfterImport;
+    private bool _closed;
     public TextBox NameInput { get; }
+    public bool IsImporting { get; private set; }
+    public event EventHandler? ImportingChanged;
 
     public ProfileDialog(LibraryStore store, UserProfile profile, Func<UserProfile, bool> save)
     {
@@ -54,12 +64,12 @@ internal sealed class ProfileDialog : Window
         AutomationProperties.SetName(_avatar, "Profile picture preview");
         identity.Children.Add(_avatar);
         var pictureActions = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var choose = new Button { Content = "Choose picture", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 5, 8, 5) };
-        choose.Click += (_, _) => ChoosePicture();
-        var remove = new Button { Content = "Remove", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 5, 8, 5) };
-        remove.Click += (_, _) => { SetAvatar(null); if (_status is not null) _status.Visibility = Visibility.Collapsed; };
-        pictureActions.Children.Add(choose);
-        pictureActions.Children.Add(remove);
+        _choosePicture = new Button { Content = "Choose picture", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 5, 8, 5) };
+        _choosePicture.Click += (_, _) => ChoosePicture();
+        _removePicture = new Button { Content = "Remove", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 5, 8, 5) };
+        _removePicture.Click += (_, _) => { SetAvatar(null); if (_status is not null) _status.Visibility = Visibility.Collapsed; };
+        pictureActions.Children.Add(_choosePicture);
+        pictureActions.Children.Add(_removePicture);
         Grid.SetColumn(pictureActions, 1);
         identity.Children.Add(pictureActions);
         panel.Children.Add(identity);
@@ -75,12 +85,12 @@ internal sealed class ProfileDialog : Window
         };
         panel.Children.Add(_status);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
-        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 6, 0) };
-        cancel.Click += (_, _) => Close();
-        var accept = new Button { Content = "Save", IsDefault = true, Padding = new Thickness(12, 8, 12, 8) };
-        accept.Click += (_, _) => { if (TrySave()) DialogResult = true; };
-        actions.Children.Add(cancel);
-        actions.Children.Add(accept);
+        _cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 6, 0) };
+        _cancel.Click += (_, _) => Close();
+        _accept = new Button { Content = "Save", IsDefault = true, Padding = new Thickness(12, 8, 12, 8) };
+        _accept.Click += (_, _) => { if (TrySave()) DialogResult = true; };
+        actions.Children.Add(_cancel);
+        actions.Children.Add(_accept);
         panel.Children.Add(actions);
         Content = new Border
         {
@@ -88,10 +98,12 @@ internal sealed class ProfileDialog : Window
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Child = panel
         };
         UpdateAvatar();
+        UpdateActions();
     }
 
     public bool TrySave()
     {
+        if (IsImporting || _closeAfterImport || _closed) return false;
         var name = NameInput.Text.Trim();
         if (name.Length == 0) name = "You";
         if (new System.Globalization.StringInfo(name).LengthInTextElements > 80 ||
@@ -113,13 +125,19 @@ internal sealed class ProfileDialog : Window
     {
         _avatarImage = CopyImage(image);
         UpdateAvatar();
+        UpdateActions();
     }
 
-    internal void ChoosePicture()
+    internal async void ChoosePicture() =>
+        await ImportPictureAsync(() => ImageAttachments.ImportFilesAsync(this, _store, remainingSlots: 1));
+
+    private async Task ImportPictureAsync(Func<Task<IReadOnlyList<NoteImage>>> import)
     {
+        if (IsImporting || _closeAfterImport || _closed) return;
+        SetImporting(true);
         try
         {
-            var images = ImageAttachments.ImportFiles(this, _store, remainingSlots: 1);
+            var images = await import();
             if (images.Count == 0) return;
             SetAvatar(images[0]);
             _status.Visibility = Visibility.Collapsed;
@@ -131,6 +149,45 @@ internal sealed class ProfileDialog : Window
                 ? "Choose one picture for your profile."
                 : ImageFailureMessages.Describe(error));
         }
+        finally
+        {
+            SetImporting(false);
+            if (_closeAfterImport && !_closed)
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Close));
+        }
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (IsImporting)
+        {
+            _closeAfterImport = true;
+            UpdateActions();
+            e.Cancel = true;
+        }
+        base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _closed = true;
+        base.OnClosed(e);
+    }
+
+    private void SetImporting(bool importing)
+    {
+        IsImporting = importing;
+        UpdateActions();
+        ImportingChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateActions()
+    {
+        var ready = !IsImporting && !_closeAfterImport && !_closed;
+        _choosePicture.IsEnabled = ready;
+        _removePicture.IsEnabled = ready && _avatarImage is not null;
+        _accept.IsEnabled = ready;
+        _cancel.IsEnabled = !_closeAfterImport && !_closed;
     }
 
     private void UpdateAvatar()

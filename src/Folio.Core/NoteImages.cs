@@ -27,7 +27,8 @@ public static class NoteImages
             throw new InvalidDataException("Images must be at most 16,000 pixels on each side and 40 million pixels in total.");
     }
 
-    internal static string ValidateBytes(ReadOnlySpan<byte> bytes, int width, int height)
+    /// <summary>Validates a portable PNG/JPEG before a batch import writes any assets.</summary>
+    public static string ValidateBytes(ReadOnlySpan<byte> bytes, int width, int height)
     {
         ValidateDimensions(width, height);
         if (bytes.Length is <= 0 or > MaxImportBytes)

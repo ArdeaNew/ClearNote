@@ -33,6 +33,11 @@ public sealed class FeedView : UserControl
     public event Action? ProfileRequested;
     public event Action? AvatarChangeRequested;
     public event Action<Exception>? InputRejected;
+    public event Action? ImageImportChanged;
+    public event Action? InputChanged;
+    /// <summary>A saved edit is visible, or an accepted deletion has left the feed.</summary>
+    public event Action? ContentChanged;
+    public bool IsImportingImages => _renderedCards.Any(card => card.IsImportingImages);
     public IReadOnlyList<FeedNoteCard> RenderedCards => _renderedCards.AsReadOnly();
 
     public void ApplyProfile(UserProfile profile)
@@ -67,6 +72,7 @@ public sealed class FeedView : UserControl
         Content = root;
         _scroll.ScrollChanged += (_, _) => QueueVisibleCheck();
         _scroll.SizeChanged += (_, _) => QueueVisibleCheck();
+        IsEnabledChanged += (_, _) => QueueVisibleCheck();
         _cardsPanel.LayoutUpdated += (_, _) => QueueVisibleCheck();
         Loaded += (_, _) => QueueVisibleCheck();
     }
@@ -79,10 +85,9 @@ public sealed class FeedView : UserControl
         _fetchBatch = fetchBatch;
         _trackViews = trackViews;
         _hasMore = true;
-        _renderedCards.Clear();
+        foreach (var card in _renderedCards.ToArray()) DetachCard(card);
         _renderedIds.Clear();
         _viewedIds.Clear();
-        _cardsPanel.Children.Clear();
         _scroll.ScrollToTop();
         AppendBatch();
         QueueVisibleCheck();
@@ -96,15 +101,25 @@ public sealed class FeedView : UserControl
 
     public bool SavePendingEdits()
     {
+        if (IsImportingImages) return false;
         foreach (var card in _renderedCards.ToArray())
             if (card.IsEditing && !card.TrySave()) return false;
         return true;
     }
 
+    /// <summary>Rechecks committed rows without replacing active editors or resetting scroll.</summary>
+    public void ReconcileSavedFilter(Func<CardDocument, bool> matches)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        foreach (var card in _renderedCards.Where(card => !card.IsEditing && !matches(card.Card)).ToArray())
+            DetachCard(card);
+        QueueVisibleCheck();
+    }
+
     /// <summary>Uses arranged visual bounds, so an offscreen host can exercise the same viewport rules.</summary>
     public void CheckVisibleCards()
     {
-        if (_checking) return;
+        if (_checking || !IsEnabled || IsImportingImages) return;
         _checking = true;
         var generation = _generation;
         try
@@ -158,11 +173,14 @@ public sealed class FeedView : UserControl
                     DeleteNote = note => DeleteNote?.Invoke(note) ?? false
                 };
                 card.Deleted += RemoveCard;
+                card.Saved += OnCardSaved;
                 card.ProfileRequested += RequestProfile;
                 card.AvatarChangeRequested += RequestAvatarChange;
-                card.Body.InputRejected += error => InputRejected?.Invoke(error);
-                card.InputRejected += error => InputRejected?.Invoke(error);
+                card.Body.InputRejected += OnInputRejected;
+                card.InputRejected += OnInputRejected;
                 card.EditingChanged += QueueVisibleCheck;
+                card.ImageImportChanged += OnImageImportChanged;
+                card.InputChanged += OnInputChanged;
                 _renderedCards.Add(card);
                 _cardsPanel.Children.Add(card);
                 added++;
@@ -175,16 +193,37 @@ public sealed class FeedView : UserControl
 
     private void RemoveCard(FeedNoteCard card)
     {
-        if (!_renderedCards.Remove(card)) return;
-        card.Deleted -= RemoveCard;
-        card.ProfileRequested -= RequestProfile;
-        card.AvatarChangeRequested -= RequestAvatarChange;
-        card.EditingChanged -= QueueVisibleCheck;
-        _cardsPanel.Children.Remove(card);
+        if (!DetachCard(card)) return;
+        ContentChanged?.Invoke();
         QueueVisibleCheck();
     }
 
+    private bool DetachCard(FeedNoteCard card)
+    {
+        if (!_renderedCards.Remove(card)) return false;
+        card.Deleted -= RemoveCard;
+        card.Saved -= OnCardSaved;
+        card.ProfileRequested -= RequestProfile;
+        card.AvatarChangeRequested -= RequestAvatarChange;
+        card.EditingChanged -= QueueVisibleCheck;
+        card.ImageImportChanged -= OnImageImportChanged;
+        card.InputChanged -= OnInputChanged;
+        card.Body.InputRejected -= OnInputRejected;
+        card.InputRejected -= OnInputRejected;
+        _cardsPanel.Children.Remove(card);
+        return true;
+    }
+
+    private void OnCardSaved(FeedNoteCard card) => ContentChanged?.Invoke();
+    private void OnInputRejected(Exception error) => InputRejected?.Invoke(error);
+    private void OnInputChanged() => InputChanged?.Invoke();
+
     private void RequestProfile() => ProfileRequested?.Invoke();
+    private void OnImageImportChanged()
+    {
+        ImageImportChanged?.Invoke();
+        QueueVisibleCheck();
+    }
     private void RequestAvatarChange() => AvatarChangeRequested?.Invoke();
 
     private Rect ViewportBounds()

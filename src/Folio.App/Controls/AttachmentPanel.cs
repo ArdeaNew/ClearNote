@@ -12,8 +12,8 @@ namespace Folio.App.Controls;
 public sealed class AttachmentPanel : UserControl
 {
     private const double Gap = 8;
-    private const double PreviewMaxWidth = 300;
-    private const double PreviewMaxHeight = 280;
+    private const double PreviewHeight = 308;
+    private const double EditablePreviewHeight = 184.8;
     private readonly LibraryStore _store;
     private readonly ScrollViewer _viewport;
     private readonly StackPanel _items;
@@ -22,9 +22,11 @@ public sealed class AttachmentPanel : UserControl
     private List<NoteImage> _images = [];
     private List<Border> _frames = [];
     private bool _editable;
-    private double _measuredWidth;
 
     public event EventHandler? Changed;
+    public event EventHandler? ImportingChanged;
+    public event Action<Exception>? ImportFailed;
+    public bool IsImporting { get; private set; }
     public bool HasImages => _images.Count > 0;
     public int Count => _images.Count;
 
@@ -85,10 +87,44 @@ public sealed class AttachmentPanel : UserControl
 
     public void PickImages(Window? owner = null) => AddImages(ImageAttachments.ImportFiles(owner, _store, ImageAttachments.MaxImages - Count));
 
+    public Task PickImagesAsync(Window? owner = null) =>
+        ImportAsync(() => ImageAttachments.ImportFilesAsync(owner, _store, ImageAttachments.MaxImages - Count));
+
+    public bool TryPasteImages(IDataObject data)
+    {
+        if (!_editable) return false;
+        if (IsImporting)
+            return data.GetDataPresent(DataFormats.FileDrop) || data.GetDataPresent("PNG", false) || data.GetDataPresent(DataFormats.Bitmap);
+        var import = ImageAttachments.ImportPasteAsync(data, _store, ImageAttachments.MaxImages - Count);
+        if (import is null) return false;
+        _ = CompletePasteAsync(import);
+        return true;
+    }
+
+    private async Task CompletePasteAsync(Task<IReadOnlyList<NoteImage>> import)
+    {
+        try { await ImportAsync(() => import); }
+        catch (Exception error) { ImportFailed?.Invoke(error); }
+    }
+
+    private async Task ImportAsync(Func<Task<IReadOnlyList<NoteImage>>> import)
+    {
+        if (IsImporting || !_editable) return;
+        IsImporting = true;
+        IsEnabled = false;
+        ImportingChanged?.Invoke(this, EventArgs.Empty);
+        try { AddImages(await import()); }
+        finally
+        {
+            IsImporting = false;
+            IsEnabled = true;
+            ImportingChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     protected override Size MeasureOverride(Size constraint)
     {
         var width = double.IsFinite(constraint.Width) ? constraint.Width : ActualWidth > 0 ? ActualWidth : 540;
-        ApplyTileSizes(Math.Max(1, width));
         return base.MeasureOverride(new Size(width, constraint.Height));
     }
 
@@ -101,6 +137,9 @@ public sealed class AttachmentPanel : UserControl
         {
             var image = images[index];
             var imageIndex = index;
+            // Keep one row height for any image count; natural widths avoid cropping and letterboxing.
+            var imageHeight = editable ? EditablePreviewHeight : PreviewHeight;
+            var ratio = Math.Max(1, image.PixelWidth) / (double)Math.Max(1, image.PixelHeight);
             var grid = new Grid
             {
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
@@ -110,7 +149,8 @@ public sealed class AttachmentPanel : UserControl
             {
                 CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromRgb(248, 249, 250)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(239, 240, 241)), BorderThickness = new Thickness(1),
-                ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Left
+                ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Left,
+                Width = Math.Max(1, imageHeight * ratio), Height = imageHeight
             };
             AutomationProperties.SetAutomationId(frame, "AttachmentFrame-" + (index + 1));
             frame.SizeChanged += (_, _) => frame.Clip = new RectangleGeometry(new Rect(frame.RenderSize), 10, 10);
@@ -119,16 +159,18 @@ public sealed class AttachmentPanel : UserControl
             {
                 frame.Child = new Image
                 {
-                    Source = ImageAttachments.LoadPreview(_store.GetImagePath(image), editable ? 480 : 1400),
+                    Source = ImageAttachments.LoadPreview(_store.GetImagePath(image), 1000),
                     Stretch = Stretch.Uniform
                 };
                 AutomationProperties.SetName(frame.Child, $"Attached image {index + 1}");
             }
-            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or FormatException or System.Runtime.InteropServices.COMException)
+            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or ArgumentException or FormatException or System.Runtime.InteropServices.COMException)
             {
+                OperationDiagnostics.TryWrite(_store, "image-preview", error);
                 frame.Child = new TextBlock
                 {
                     Text = "Image unavailable", FontFamily = AppTypography.Text, FontSize = 11,
+                    ToolTip = ImageFailureMessages.Describe(error),
                     TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
                     Foreground = new SolidColorBrush(Color.FromRgb(83, 100, 113)),
                     VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8)
@@ -160,7 +202,6 @@ public sealed class AttachmentPanel : UserControl
         _editable = editable;
         _items.Children.Clear();
         foreach (var child in children) _items.Children.Add(child);
-        _measuredWidth = 0;
         _viewport.ScrollToHorizontalOffset(0);
         Visibility = HasImages ? Visibility.Visible : Visibility.Collapsed;
         Margin = HasImages ? new Thickness(0, 10, 0, 0) : new Thickness(0);
@@ -168,40 +209,9 @@ public sealed class AttachmentPanel : UserControl
         InvalidateMeasure();
     }
 
-    private void ApplyTileSizes(double width)
-    {
-        if (Math.Abs(width - _measuredWidth) < 0.1) return;
-        _measuredWidth = width;
-        for (var index = 0; index < _frames.Count; index++)
-        {
-            var image = _images[index];
-            var ratio = Math.Max(1, image.PixelWidth) / (double)Math.Max(1, image.PixelHeight);
-            double tileWidth;
-            double tileHeight;
-            if (_editable)
-            {
-                tileHeight = Math.Min(168, Math.Max(64, Math.Min(image.PixelHeight, width / ratio)));
-                tileWidth = Math.Min(width, Math.Max(96, Math.Min(280, tileHeight * ratio)));
-            }
-            else
-            {
-                // Keep feed pictures compact even after widening the window. Fit both
-                // dimensions without cropping, letterboxing or enlarging small sources.
-                var availableWidth = _images.Count == 1 ? width : width * 0.86;
-                var scale = Math.Min(1, Math.Min(
-                    Math.Min(availableWidth, PreviewMaxWidth) / Math.Max(1, image.PixelWidth),
-                    PreviewMaxHeight / Math.Max(1, image.PixelHeight)));
-                tileWidth = Math.Max(1, image.PixelWidth) * scale;
-                tileHeight = Math.Max(1, image.PixelHeight) * scale;
-            }
-            _frames[index].Width = Math.Max(1, tileWidth);
-            _frames[index].Height = tileHeight;
-        }
-    }
-
     private Button NavigationButton(bool forward)
     {
-        var button = FeedNoteCard.MakeButton("", forward ? "Next image" : "Previous image", new Thickness(0));
+        var button = FeedNoteCard.MakeButton("", forward ? "Next image" : "Previous image", new Thickness(0), cornerRadius: 15);
         button.Content = Arrow(forward);
         button.Width = 30; button.Height = 30; button.MinHeight = 30;
         button.Background = new SolidColorBrush(Color.FromArgb(242, 255, 255, 255));
@@ -231,22 +241,25 @@ public sealed class AttachmentPanel : UserControl
         var starts = new List<double>();
         var offset = 0d;
         foreach (var frame in _frames) { starts.Add(offset); offset += frame.Width + Gap; }
+        var page = Math.Max(1, _viewport.ViewportWidth * 0.86);
         var target = direction > 0
-            ? starts.FirstOrDefault(start => start > _viewport.HorizontalOffset + 1, _viewport.ScrollableWidth)
-            : starts.LastOrDefault(start => start < _viewport.HorizontalOffset - 1, 0);
+            ? Math.Min(starts.FirstOrDefault(start => start > _viewport.HorizontalOffset + 1, _viewport.ScrollableWidth),
+                _viewport.HorizontalOffset + page)
+            : Math.Max(starts.LastOrDefault(start => start < _viewport.HorizontalOffset - 1, 0),
+                _viewport.HorizontalOffset - page);
         _viewport.ScrollToHorizontalOffset(Math.Clamp(target, 0, _viewport.ScrollableWidth));
     }
 
     private void UpdateNavigation()
     {
-        var multiple = Count > 1 && _viewport.ScrollableWidth > 1;
-        _previous.Visibility = multiple && _viewport.HorizontalOffset > 1 ? Visibility.Visible : Visibility.Collapsed;
-        _next.Visibility = multiple && _viewport.HorizontalOffset < _viewport.ScrollableWidth - 1 ? Visibility.Visible : Visibility.Collapsed;
+        var overflow = HasImages && _viewport.ScrollableWidth > 1;
+        _previous.Visibility = overflow && _viewport.HorizontalOffset > 1 ? Visibility.Visible : Visibility.Collapsed;
+        _next.Visibility = overflow && _viewport.HorizontalOffset < _viewport.ScrollableWidth - 1 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Count < 2 || Keyboard.Modifiers != ModifierKeys.None) return;
+        if (!HasImages || Keyboard.Modifiers != ModifierKeys.None) return;
         switch (e.Key)
         {
             case Key.Left: Move(-1); break;
@@ -260,7 +273,7 @@ public sealed class AttachmentPanel : UserControl
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (Count > 1 && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        if (HasImages && _viewport.ScrollableWidth > 1 && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
             Move(e.Delta < 0 ? 1 : -1);
             e.Handled = true;

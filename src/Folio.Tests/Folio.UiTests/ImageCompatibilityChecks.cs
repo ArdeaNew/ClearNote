@@ -38,10 +38,14 @@ public static class ImageCompatibilityChecks
             Assert(image.PixelWidth == expected.PixelWidth && image.PixelHeight == expected.PixelHeight,
                 $"The {format}/{codec} image dimensions must survive import.");
             var saved = File.ReadAllBytes(store.GetImagePath(image));
-            Assert(saved[24] == 8 && saved[25] == 6, $"The {format}/{codec} image must normalize to conventional 8-bit RGBA PNG.");
+            if (codec is "png" or "jpg")
+                Assert(saved.SequenceEqual(bytes), $"The {format}/{codec} portable image must retain its original encoded bytes.");
+            else
+                Assert(saved[24] == 8 && saved[25] == 6, $"The {format}/{codec} image must normalize to conventional 8-bit RGBA PNG.");
             var actual = Decode(saved);
             Assert(VisuallyEqual(Pixels(expected), Pixels(actual)), $"The decoded {format}/{codec} colors and transparency must survive conversion to 8-bit PNG.");
-            Assert(Math.Abs(actual.DpiX - 96) < .1 && Math.Abs(actual.DpiY - 96) < .1,
+            var preview = ImageAttachments.LoadPreview(store.GetImagePath(image), 40);
+            Assert(Math.Abs(preview.DpiX - 96) < .1 && Math.Abs(preview.DpiY - 96) < .1,
                 "An unusual source DPI must not carry through to attachment display.");
         }
     }
@@ -155,19 +159,20 @@ public static class ImageCompatibilityChecks
 
     private static void LargePhotoFitsAssetLimit(LibraryStore store)
     {
-        // Before 1.6.1 this valid 8,079,191-byte JPEG failed because its full-size PNG grew beyond 20 MiB.
+        // A small compressed photograph must not be enlarged into PNG or downsampled just to fit that conversion.
         var pixels = new byte[3000 * 3000 * 3]; new Random(161).NextBytes(pixels);
         var source = BitmapSource.Create(3000, 3000, 96, 96, PixelFormats.Bgr24, null, pixels, 3000 * 3);
         var input = Encode(source, "jpg");
         Assert(input.Length < ImageAttachments.MaxFileBytes, "The large-photo regression must start with an allowed-size source.");
         var snapshot = input.ToArray();
         var image = ImageAttachments.ImportBytes(input, store);
-        Assert(image.PixelWidth == 2400 && image.PixelHeight == 2400 && input.SequenceEqual(snapshot),
-            "Only a PNG that exceeds the asset limit should be reduced, preserving aspect ratio and original input bytes.");
+        Assert(image.PixelWidth == 3000 && image.PixelHeight == 3000 && input.SequenceEqual(snapshot),
+            "A supported JPEG must retain full resolution while leaving the original input bytes unchanged.");
         var saved = File.ReadAllBytes(store.GetImagePath(image));
         var decoded = Decode(saved);
-        Assert(saved.Length <= ImageAttachments.MaxFileBytes && decoded.PixelWidth == image.PixelWidth && decoded.PixelHeight == image.PixelHeight,
-            "Reduced PNG assets must remain below the limit and record their actual encoded dimensions.");
+        Assert(saved.SequenceEqual(snapshot) && saved.Length <= ImageAttachments.MaxFileBytes &&
+               decoded.PixelWidth == image.PixelWidth && decoded.PixelHeight == image.PixelHeight,
+            "A copied JPEG must remain below the asset limit without an additional lossy conversion or PNG re-encode.");
     }
 
     private static void LargeTransparentBitmapFitsAssetLimit(LibraryStore store)

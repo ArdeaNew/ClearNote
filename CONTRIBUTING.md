@@ -52,6 +52,15 @@ For a behavior change, run the relevant checks and the full two-harness regressi
 
 README screenshots live in `docs/images`. Keep them focused on the current interface, use synthetic content, and regenerate them when a visible change makes them misleading. Avoid embedding user notes or machine-specific paths in screenshots.
 
+To render the continuous-feed showcase, put three photographs you have permission to publish in a separate folder. After building, run:
+
+```powershell
+dotnet run --project src/Folio.Tests/Folio.UiTests/Folio.UiTests.csproj -c Release --no-build -- ./checks --render-showcase --photos-dir C:/Pictures/Showcase --output ./work/showcase
+python src/tools/Encode-Showcase.py ./work/showcase ./work/showcase/feed-scroll.gif
+```
+
+The optional GIF encoder requires Pillow. It is a documentation tool, not an application dependency. Review the long feed, animation, Memo and Review images, then copy only those four exports into `docs/images/showcase`. The renderer uses actual application controls and an isolated example library. Do not commit source photographs, frame sequences, manifests or example libraries; exported images contain no source-file metadata.
+
 ## Pull requests and issue reports
 
 Describe the problem, the resulting behavior and the checks performed. Include a small synthetic reproduction and a screenshot for a visual problem. Never attach a real `Log` folder, a personal backup, imported private pictures, access tokens or unredacted diagnostic paths. Diagnostic entries can include local file paths even though they do not serialize note bodies.

@@ -18,8 +18,12 @@ public static class EditorChecks
         HeadingLevelsAndUndo();
         PrefixTyping();
         TypedOrderedNumbers();
+        NativeSpaceCommands();
+        QueuedNativeTyping();
+        InputCompletionBoundaries();
         InlineTyping();
         NumberingAndEnter();
+        ForcedLineBreaks();
         MarkdownPaste();
         RejectedInput();
         TextColors();
@@ -99,6 +103,213 @@ public static class EditorChecks
         var reloaded = Editor();
         reloaded.Load(card, true);
         Assert(reloaded.Capture().Paragraphs.Select(paragraph => (paragraph.Kind, paragraph.Number)).SequenceEqual(continued.Capture().Paragraphs.Select(paragraph => (paragraph.Kind, paragraph.Number))), "Typed numbering and continuation must survive storage and reload.");
+    }
+
+    private static void NativeSpaceCommands()
+    {
+        foreach (var command in new[] { NativeSpace(), NativeSpace(shift: true) })
+        {
+            foreach (var prefix in new[] { "1", "1.", "12)", "#", "-", ">" })
+            {
+                var editor = Editor();
+                TypeText(editor, prefix);
+                command.Execute(null, editor.TextBox);
+                FlushNativeInput(editor);
+                var expected = prefix == "#" ? "heading" : prefix == "-" ? "bullet" : prefix == ">" ? "quote" : "ordered";
+                Assert(First(editor).Kind == expected && editor.PlainText == "", "Physical Space's routed editing command must convert a typed Markdown prefix.");
+                editor.Undo();
+                Assert(editor.PlainText.TrimEnd(' ') == prefix && First(editor).Kind == "body", "A routed Space conversion must undo to its literal prefix in one action.");
+                editor.Redo();
+                Assert(First(editor).Kind == expected && editor.PlainText == "", "Redo must restore routed Space autoformatting.");
+            }
+        }
+
+        var continued = Editor("1.");
+        NativeSpace().Execute(null, continued.TextBox);
+        FlushNativeInput(continued);
+        TypeText(continued, "first");
+        EditingCommands.EnterParagraphBreak.Execute(null, continued.TextBox);
+        TypeText(continued, "second");
+        Assert(continued.Capture().Paragraphs.Select(paragraph => (paragraph.Kind, paragraph.Number))
+            .SequenceEqual(new[] { ("ordered", 1), ("ordered", 2) }), "A keyboard-command-created ordered list must continue from one to two.");
+        EditingCommands.EnterParagraphBreak.Execute(null, continued.TextBox);
+        EditingCommands.EnterParagraphBreak.Execute(null, continued.TextBox);
+        Assert(continued.Capture().Paragraphs.Last().Kind == "body", "Native Enter commands must leave a blank ordered item.");
+
+        var readOnly = Editor("1.");
+        readOnly.Load(Card(readOnly.Capture()), false);
+        End(readOnly);
+        NativeSpace().Execute(null, readOnly.TextBox);
+        Assert(readOnly.PlainText == "1." && First(readOnly).Kind == "body", "Space autoformatting must remain disabled in a read-only feed card.");
+    }
+
+    private static void QueuedNativeTyping()
+    {
+        foreach (var prefix in new[] { "1.", "12.", "3)", "1" })
+        {
+            var editor = Editor();
+            NativeText(editor, prefix);
+            NativeSpace().Execute(null, editor.TextBox);
+            NativeText(editor, "first");
+            FlushNativeInput(editor);
+            Assert(First(editor).Kind == "ordered" && editor.PlainText == "first", "Native queued typing before and after a physical Space must convert a complete marker without losing item content.");
+            Assert(First(editor).Number == int.Parse(prefix.TrimEnd('.', ')')), "Native command typing must preserve the requested starting ordinal.");
+        }
+        var literal = Editor();
+        NativeText(literal, "Version");
+        NativeSpace().Execute(null, literal.TextBox);
+        NativeText(literal, "one");
+        FlushNativeInput(literal);
+        Assert(First(literal).Kind == "body" && literal.PlainText == "Version one", "Ordinary native typing must retain spaces and literal text.");
+    }
+
+    private static void InputCompletionBoundaries()
+    {
+        var numbered = Editor();
+        NativeText(numbered, "1.");
+        NativeSpace().Execute(null, numbered.TextBox);
+        NativeText(numbered, "item");
+        // Deliberately do not pump ContextIdle between Space, typing and Enter.
+        EditingCommands.EnterParagraphBreak.Execute(null, numbered.TextBox);
+        Assert(numbered.Capture().Paragraphs.Count == 2 && First(numbered).Kind == "ordered" &&
+            First(numbered).Runs.Single().Text == "item" && numbered.Capture().Paragraphs.Last() is { Kind: "ordered", Number: 2 },
+            "Enter must flush a native input batch and complete a numbered marker before continuing the list.");
+        NativeText(numbered, "second");
+        numbered.CompleteInput();
+        Assert(numbered.PlainText == "item\nsecond", "An explicit save boundary must capture all queued item text.");
+        EditingCommands.EnterParagraphBreak.Execute(null, numbered.TextBox);
+        EditingCommands.EnterParagraphBreak.Execute(null, numbered.TextBox);
+        Assert(numbered.Capture().Paragraphs.Last().Kind == "body", "Rapid native Enter must still leave an empty continued item.");
+
+        var soft = Editor();
+        NativeText(soft, "alpha");
+        EditingCommands.EnterLineBreak.Execute(null, soft.TextBox);
+        NativeText(soft, "beta");
+        soft.CompleteInput();
+        Assert(soft.PlainText == "alpha\nbeta" && soft.Capture().Paragraphs.Count == 1, "Shift+Enter must not move queued text onto the wrong side of a forced break.");
+
+        var posting = Editor();
+        NativeText(posting, "1.");
+        NativeSpace().Execute(null, posting.TextBox);
+        NativeText(posting, "posted item");
+        posting.CompleteInput();
+        var snapshot = posting.Capture();
+        Assert(snapshot.Paragraphs.Single().Kind == "ordered" && posting.PlainText == "posted item", "A post/save snapshot taken before idle must include native typing and Markdown autoformatting.");
+        posting.Undo();
+        Assert(posting.PlainText == "1. posted item" && First(posting).Kind == "body", "One Undo after completing pending input must restore the literal marker and retain typed content.");
+        posting.Redo();
+        Assert(posting.PlainText == "posted item" && First(posting).Kind == "ordered", "Redo must restore a marker completed at a snapshot boundary.");
+
+        var selected = Editor("alpha beta");
+        var run = AllParagraphs(selected.TextBox.Document.Blocks).Single().Inlines.OfType<Run>().Single();
+        selected.TextBox.Selection.Select(run.ContentStart.GetPositionAtOffset(6)!, run.ContentEnd);
+        var start = selected.TextBox.Document.ContentStart.GetOffsetToPosition(selected.TextBox.Selection.Start);
+        var end = selected.TextBox.Document.ContentStart.GetOffsetToPosition(selected.TextBox.Selection.End);
+        var before = JsonSerializer.Serialize(selected.Capture());
+        var canUndo = selected.CanUndo;
+        selected.CompleteInput();
+        Assert(selected.TextBox.Selection.Text == "beta" && start == selected.TextBox.Document.ContentStart.GetOffsetToPosition(selected.TextBox.Selection.Start) &&
+            end == selected.TextBox.Document.ContentStart.GetOffsetToPosition(selected.TextBox.Selection.End) &&
+            before == JsonSerializer.Serialize(selected.Capture()) && selected.CanUndo == canUndo,
+            "Completing input must preserve an existing selection, document and Undo availability.");
+        NativeText(selected, "gamma");
+        selected.CompleteInput();
+        Assert(selected.PlainText == "alpha gamma" && selected.TextBox.Selection.IsEmpty &&
+            selected.TextBox.CaretPosition.CompareTo(AllParagraphs(selected.TextBox.Document.Blocks).Single().ContentEnd.GetInsertionPosition(LogicalDirection.Backward)) == 0,
+            "Forward-gravity bookmarks must follow queued replacement text and leave the caret after it.");
+        selected.Undo();
+        Assert(selected.PlainText == "alpha beta", "Completing queued replacement text must preserve native Undo.");
+
+        var middle = Editor("alphabeta");
+        run = AllParagraphs(middle.TextBox.Document.Blocks).Single().Inlines.OfType<Run>().Single();
+        middle.TextBox.CaretPosition = run.ContentStart.GetPositionAtOffset(5)!;
+        NativeText(middle, " ");
+        middle.CompleteInput();
+        Assert(middle.PlainText == "alpha beta" && new TextRange(middle.TextBox.CaretPosition.Paragraph!.ContentStart, middle.TextBox.CaretPosition).Text == "alpha ",
+            "Completing native input in the middle of a paragraph must retain the editing position.");
+
+        var formatting = Editor("alpha");
+        var baseline = Editor("alpha");
+        // Match document and keyboard languages to isolate input completion from WPF's
+        // language-tagging path, which also clears springload formatting in the baseline.
+        var inputLanguage = System.Windows.Markup.XmlLanguage.GetLanguage(InputLanguageManager.Current.CurrentInputLanguage.IetfLanguageTag);
+        baseline.TextBox.Language = baseline.TextBox.Document.Language = inputLanguage;
+        formatting.TextBox.Language = formatting.TextBox.Document.Language = inputLanguage;
+        baseline.ToggleBold(); baseline.SetForeground("#123456"); baseline.SetBackground("#FFF2A8");
+        NativeText(baseline, "X");
+        FlushNativeInput(baseline);
+        Assert(First(baseline).Runs.Last() is { Text: "X", Bold: true, Foreground: "#123456", Background: "#FFF2A8" },
+            "The native input test host must apply pending insertion formatting before testing input completion.");
+        formatting.ToggleBold();
+        formatting.SetForeground("#123456");
+        formatting.SetBackground("#FFF2A8");
+        var beforeFormatting = FormattingState(formatting);
+        formatting.CompleteInput();
+        var afterFormatting = FormattingState(formatting);
+        Assert(beforeFormatting == afterFormatting, "Saving must retain every pending insertion-format property.");
+        NativeText(formatting, "X");
+        FlushNativeInput(formatting);
+        Assert(First(formatting).Runs.Last() is { Text: "X", Bold: true, Foreground: "#123456", Background: "#FFF2A8" },
+            "Saving must preserve pending insertion emphasis, text color and highlight.");
+        Assert(JsonSerializer.Serialize(formatting.Capture()) == JsonSerializer.Serialize(baseline.Capture()),
+            "Completing input must leave subsequent native typing identical to the unflushed baseline.");
+        formatting.Undo();
+        Assert(formatting.PlainText == "alpha", "Input completion must preserve Undo of subsequently typed text.");
+
+        var moved = Editor("1.\nelsewhere");
+        var firstParagraph = AllParagraphs(moved.TextBox.Document.Blocks).First();
+        moved.TextBox.CaretPosition = firstParagraph.ContentEnd.GetInsertionPosition(LogicalDirection.Backward)!;
+        NativeSpace().Execute(null, moved.TextBox);
+        NativeText(moved, "item");
+        EditingCommands.MoveToDocumentEnd.Execute(null, moved.TextBox);
+        FlushNativeInput(moved);
+        Assert(First(moved).Kind == "ordered" && moved.PlainText == "item\nelsewhere" &&
+            moved.TextBox.CaretPosition.Paragraph == AllParagraphs(moved.TextBox.Document.Blocks).Last(),
+            "Pending autoformatting must finish its saved paragraph without moving the caret back from another paragraph.");
+    }
+
+    private static void ForcedLineBreaks()
+    {
+        var editor = Editor("alpha");
+        EditingCommands.EnterLineBreak.Execute(null, editor.TextBox);
+        TypeText(editor, "beta");
+        Assert(editor.Capture().Paragraphs.Count == 1 && editor.PlainText == "alpha\nbeta", "Shift+Enter's routed command must create a soft line break within one paragraph.");
+        var paragraph = AllParagraphs(editor.TextBox.Document.Blocks).Single();
+        Assert(paragraph.Inlines.OfType<LineBreak>().Count() == 1, "Forced line breaks must be native LineBreak elements.");
+        var card = Card(editor.Capture());
+        var reloaded = Editor();
+        reloaded.Load(card, true);
+        Assert(reloaded.PlainText == "alpha\nbeta" && reloaded.Capture().Paragraphs.Count == 1 &&
+            AllParagraphs(reloaded.TextBox.Document.Blocks).Single().Inlines.OfType<LineBreak>().Count() == 1,
+            "A soft break must survive capture and reload as an editable native line break.");
+        End(reloaded);
+        EditingCommands.EnterLineBreak.Execute(null, reloaded.TextBox);
+        Assert(reloaded.PlainText == "alpha\nbeta\n", "A forced trailing break must be retained.");
+        reloaded.Undo();
+        Assert(reloaded.PlainText == "alpha\nbeta", "A forced break must undo in one action.");
+        reloaded.Redo();
+        Assert(reloaded.PlainText == "alpha\nbeta\n", "A forced break must support Redo.");
+
+        var numbered = Editor("1.");
+        NativeSpace().Execute(null, numbered.TextBox);
+        FlushNativeInput(numbered);
+        TypeText(numbered, "first line");
+        EditingCommands.EnterLineBreak.Execute(null, numbered.TextBox);
+        TypeText(numbered, "same item");
+        Assert(numbered.Capture().Paragraphs.Count == 1 && First(numbered).Kind == "ordered" &&
+            numbered.PlainText == "first line\nsame item", "A forced break inside a numbered item must not create another number.");
+        EditingCommands.EnterParagraphBreak.Execute(null, numbered.TextBox);
+        Assert(numbered.Capture().Paragraphs.Last() is { Kind: "ordered", Number: 2 }, "Enter after a multiline list item must continue numbering.");
+
+        var selected = Editor("replace this");
+        selected.TextBox.SelectAll();
+        EditingCommands.EnterLineBreak.Execute(null, selected.TextBox);
+        Assert(selected.PlainText == "\n" && selected.Capture().Paragraphs.Count == 1, "A forced break must replace the selection without losing its native paragraph.");
+        selected.Undo();
+        Assert(selected.PlainText == "replace this", "Undo must restore text replaced with a forced break.");
+        selected.Load(Card(selected.Capture()), false);
+        EditingCommands.EnterLineBreak.Execute(null, selected.TextBox);
+        Assert(selected.PlainText == "replace this", "Forced breaks must not alter a read-only feed card.");
     }
 
     private static void HeadingLevelsAndUndo()
@@ -321,6 +532,8 @@ public static class EditorChecks
         outer.UpdateLayout();
         Assert(editor.TextBox.VerticalScrollBarVisibility == ScrollBarVisibility.Disabled && editor.TextBox.Document.PagePadding == new Thickness(0), "Inline notes must have no internal scroll or canvas padding.");
         Assert(editor.ActualHeight > 800 && outer.ExtentHeight > outer.ViewportHeight, "A long inline note must use natural height inside the outer feed scroller.");
+        Assert(AllParagraphs(editor.TextBox.Document.Blocks).All(paragraph => paragraph.LineHeight <= 21 && paragraph.Margin.Bottom <= 2),
+            "Body line and paragraph spacing must remain compact in the feed.");
         Assert(editor.PlainText.Contains("Paragraph 40", StringComparison.Ordinal), "Natural layout must not truncate stored text.");
         outer.Content = null;
         editor.SetInlineLayout(false);
@@ -364,6 +577,24 @@ public static class EditorChecks
             editor.TextBox.Selection.Select(editor.TextBox.Selection.End, editor.TextBox.Selection.End);
         }
     }
+
+    private static void NativeText(NoteEditor editor, string text)
+    {
+        var args = new TextCompositionEventArgs(Keyboard.PrimaryDevice, new TextComposition(InputManager.Current, editor.TextBox, text))
+        { RoutedEvent = TextCompositionManager.TextInputEvent };
+        editor.TextBox.RaiseEvent(args);
+        Assert(args.Handled, "The native RichTextBox TextInput class handler must receive the input.");
+    }
+
+    private static string FormattingState(NoteEditor editor) => string.Join("|", new[]
+    { TextElement.FontWeightProperty, TextElement.FontStyleProperty, TextElement.ForegroundProperty, TextElement.BackgroundProperty }
+        .Select(property => editor.TextBox.Selection.GetPropertyValue(property)?.ToString()));
+
+    private static void FlushNativeInput(NoteEditor editor) =>
+        editor.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+
+    private static RoutedCommand NativeSpace(bool shift = false) => (RoutedCommand)typeof(EditingCommands)
+        .GetProperty(shift ? "ShiftSpace" : "Space", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(null)!;
 
     private static bool PreviewEnter(NoteEditor editor)
     {

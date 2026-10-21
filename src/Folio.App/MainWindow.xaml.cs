@@ -16,6 +16,7 @@ public partial class MainWindow : Window
 {
     private readonly LibraryStore _store;
     private readonly WindowWidthPreferences _widthPreferences;
+    private readonly WindowSystemMenu _windowMenu;
     private readonly DispatcherTimer _draftTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private readonly HashSet<string> _reviewRecorded = new(StringComparer.Ordinal);
     private readonly AttachmentPanel _composerMedia;
@@ -26,18 +27,24 @@ public partial class MainWindow : Window
     private string? _reviewTag;
     private string _draftId = Guid.NewGuid().ToString("N");
     private string? _errorSource;
-    private bool _reviewMode, _binding, _draftDirty, _draftBlocked, _ready;
+    private string _appliedSearchText = "";
+    private bool _restoringSearch;
+    private bool _reviewMode, _binding, _draftDirty, _draftBlocked, _ready, _closeAfterImport;
+    private bool IsImportingImages => _composerMedia.IsImporting || NotesFeed.IsImportingImages;
 
     public MainWindow(LibraryStore store)
     {
         _store = store;
         _widthPreferences = new WindowWidthPreferences(Path.GetDirectoryName(store.RootPath)!);
         InitializeComponent();
+        _windowMenu = new WindowSystemMenu(this);
         ApplyFixedWidth(_widthPreferences.Load());
         _composerMedia = new AttachmentPanel(store);
         _composerMedia.Load([], true);
         ComposerMediaHost.Children.Add(_composerMedia);
         _composerMedia.Changed += (_, _) => MarkDraftDirty();
+        _composerMedia.ImportingChanged += (_, _) => UpdateImageImportState();
+        _composerMedia.ImportFailed += error => SetError("image", ImageFailureMessages.Describe(error), error);
         NotesFeed.Store = store;
         LoadProfile();
         foreach (var (button, key) in new (Button, string)[]
@@ -49,12 +56,7 @@ public partial class MainWindow : Window
         }) button.Content = AppIcons.Create(key);
         Composer.Load(new CardDocument(), true);
         Composer.Changed += (_, _) => MarkDraftDirty();
-        Composer.AttachmentPasteHandler = data =>
-        {
-            if (!ImageAttachments.TryHandlePaste(data, _store, out var images, ImageAttachments.MaxImages - _composerMedia.Count)) return false;
-            _composerMedia.AddImages(images);
-            return true;
-        };
+        Composer.AttachmentPasteHandler = _composerMedia.TryPasteImages;
         _tagSuggestions = new TagSuggestions(Composer, () => _knownTags);
         Closed += (_, _) => _tagSuggestions.Dispose();
         Composer.SelectionChanged += (_, _) => UpdateSelection();
@@ -66,6 +68,9 @@ public partial class MainWindow : Window
         NotesFeed.ProfileRequested += EditProfile;
         NotesFeed.AvatarChangeRequested += ChangeProfilePicture;
         NotesFeed.InputRejected += ShowInputError;
+        NotesFeed.ImageImportChanged += UpdateImageImportState;
+        NotesFeed.InputChanged += () => ClearError("input");
+        NotesFeed.ContentChanged += OnFeedContentChanged;
         LoadDraft();
         _ready = true;
         RefreshFeed();
@@ -85,6 +90,7 @@ public partial class MainWindow : Window
 
     private NoteContent CaptureComposer()
     {
+        Composer.CompleteInput();
         var content = Composer.Capture();
         content.Images = _composerMedia.Capture();
         return content;
@@ -132,6 +138,7 @@ public partial class MainWindow : Window
 
     private bool SaveDraft()
     {
+        if (IsImportingImages) return false;
         if (!_draftDirty) return true;
         if (_draftBlocked) return false;
         try
@@ -149,6 +156,8 @@ public partial class MainWindow : Window
     private void Post_Click(object sender, RoutedEventArgs e) => PostNote();
     private void PostNote()
     {
+        if (IsImportingImages) return;
+        Composer.CompleteInput();
         if (!HasComposerContent || !NotesFeed.SavePendingEdits()) return;
         _draftTimer.Stop();
         try
@@ -185,7 +194,7 @@ public partial class MainWindow : Window
 
     private bool SwitchCollection(NoteCollection collection, bool refresh = true)
     {
-        if (!NotesFeed.SavePendingEdits() || !SaveDraft()) return false;
+        if (IsImportingImages || !NotesFeed.SavePendingEdits() || !SaveDraft()) return false;
         _draftTimer.Stop();
         var changed = collection != _collection;
         _collection = collection;
@@ -205,6 +214,7 @@ public partial class MainWindow : Window
     }
     private void Review_Click(object sender, RoutedEventArgs e)
     {
+        if (IsImportingImages) return;
         // Opening the menu is a read-only action. A review round starts only after selection.
         var menu = new ContextMenu
         {
@@ -245,17 +255,35 @@ public partial class MainWindow : Window
     }
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
+        if (_restoringSearch) return;
+        if (!_ready || IsImportingImages) { UpdateSearchIndicator(); return; }
+        if (!NotesFeed.SavePendingEdits())
+        {
+            _restoringSearch = true;
+            try
+            {
+                SearchBox.Text = _appliedSearchText;
+                SearchBox.CaretIndex = SearchBox.Text.Length;
+            }
+            finally { _restoringSearch = false; }
+            UpdateSearchIndicator();
+            return;
+        }
+        RefreshFeed();
+        UpdateSearchIndicator();
+    }
+    private void UpdateSearchIndicator()
+    {
         if (SearchButton != null && SearchBox != null)
         {
             var query = SearchBox.Text.Trim();
             SearchButton.Background = query.Length == 0 ? Brushes.Transparent : Selected;
             SearchButton.ToolTip = query.Length == 0 ? "Search notes" : "Search: " + query;
         }
-        if (!_ready || !NotesFeed.SavePendingEdits()) return;
-        RefreshFeed();
     }
     private void Search_Click(object sender, RoutedEventArgs e)
     {
+        if (IsImportingImages) return;
         SearchPopup.IsOpen = !SearchPopup.IsOpen;
         if (SearchPopup.IsOpen) Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
@@ -273,12 +301,10 @@ public partial class MainWindow : Window
     private void RefreshFeed()
     {
         var library = _store.Cards.Where(card => card.Collection == _collection).ToList();
-        _knownTags = library.SelectMany(NoteTags.Read).Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList();
-        if (_reviewTag != null) _reviewTag = _knownTags.FirstOrDefault(tag => string.Equals(tag, _reviewTag, StringComparison.OrdinalIgnoreCase));
+        UpdateKnownTags(library);
         var query = SearchBox.Text.Trim();
-        var cards = library.Where(card => (!_reviewMode || NoteTags.Matches(card, _reviewTag)) && (query.Length == 0 ||
-            (card.Title + "\n" + NoteText.PlainText(card)).Contains(query, StringComparison.OrdinalIgnoreCase))).ToList();
+        _appliedSearchText = SearchBox.Text;
+        var cards = library.Where(card => MatchesCurrentFilter(card, query)).ToList();
         NotesButton.Foreground = !_reviewMode && _collection == NoteCollection.Notes ? Ink : Muted;
         ReviewButton.Foreground = _reviewMode ? Ink : Muted;
         MemoButton.Foreground = _collection == NoteCollection.Memo ? Ink : Muted;
@@ -313,6 +339,24 @@ public partial class MainWindow : Window
             }, trackViews: false);
         }
     }
+    private void UpdateKnownTags(IEnumerable<CardDocument> library) =>
+        _knownTags = library.SelectMany(NoteTags.Read).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToList();
+
+    private bool MatchesCurrentFilter(CardDocument card, string query) =>
+        (!_reviewMode || NoteTags.Matches(card, _reviewTag)) && (query.Length == 0 ||
+            (card.Title + "\n" + NoteText.PlainText(card)).Contains(query, StringComparison.OrdinalIgnoreCase));
+
+    private void OnFeedContentChanged()
+    {
+        var library = _store.Cards.Where(card => card.Collection == _collection).ToList();
+        UpdateKnownTags(library);
+        var current = library.ToDictionary(card => card.Id, StringComparer.Ordinal);
+        // A save may finish while Search_Changed is still validating a new query.
+        // Reconcile against the query already shown by the feed until that action succeeds.
+        var query = _appliedSearchText.Trim();
+        NotesFeed.ReconcileSavedFilter(card => current.TryGetValue(card.Id, out var saved) && MatchesCurrentFilter(saved, query));
+    }
     private void RecordView(CardDocument document)
     {
         if (!_reviewMode || document.Collection != NoteCollection.Notes || _reviewRecorded.Contains(document.Id)) return;
@@ -329,6 +373,7 @@ public partial class MainWindow : Window
     }
     private bool SaveNote(CardDocument document, NoteContent content)
     {
+        if (IsImportingImages) return false;
         try
         {
             var current = _store.Cards.FirstOrDefault(card => card.Id == document.Id)
@@ -343,6 +388,7 @@ public partial class MainWindow : Window
     }
     private bool DeleteNote(CardDocument document)
     {
+        if (IsImportingImages) return false;
         if (DialogBox.Show(this, "Delete this note and its unused images?", "Delete note", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return false;
         try
         {
@@ -357,7 +403,7 @@ public partial class MainWindow : Window
     private void UpdateSelection()
     {
         if (Composer == null || PostButton == null) return;
-        PostButton.IsEnabled = HasComposerContent;
+        PostButton.IsEnabled = !IsImportingImages && HasComposerContent;
         BoldButton.Background = Composer.IsBold ? Selected : Brushes.Transparent;
         ItalicButton.Background = Composer.IsItalic ? Selected : Brushes.Transparent;
         HeadingButton.Background = Composer.IsHeading ? Selected : Brushes.Transparent;
@@ -371,9 +417,10 @@ public partial class MainWindow : Window
     private void Numbering_Click(object sender, RoutedEventArgs e) => Composer.ToggleNumbering();
     private void Foreground_Click(object sender, RoutedEventArgs e) => TextColorMenu.Open(ForegroundButton, Composer.SetForeground, false);
     private void Highlight_Click(object sender, RoutedEventArgs e) => TextColorMenu.Open(HighlightButton, Composer.SetBackground, true);
-    private void Image_Click(object sender, RoutedEventArgs e)
+    private async void Image_Click(object sender, RoutedEventArgs e)
     {
-        try { _composerMedia.PickImages(this); ClearError("image"); }
+        if (IsImportingImages) return;
+        try { await _composerMedia.PickImagesAsync(this); ClearError("image"); }
         catch (Exception ex) { SetError("image", ImageFailureMessages.Describe(ex), ex); }
     }
     private void Tag_Click(object sender, RoutedEventArgs e)
@@ -385,6 +432,7 @@ public partial class MainWindow : Window
 
     private void More_Click(object sender, RoutedEventArgs e)
     {
+        if (IsImportingImages) return;
         var menu = CreateMoreMenu();
         menu.IsOpen = true;
     }
@@ -396,7 +444,7 @@ public partial class MainWindow : Window
         AddWidthMenu(menu, "Wider", true);
         AddWidthMenu(menu, "Narrower", false);
         menu.Items.Add(new Separator());
-        AddMenu(menu, "Refresh", () => { if (NotesFeed.SavePendingEdits()) RefreshFeed(); });
+        AddMenu(menu, "Refresh", () => { if (!IsImportingImages && NotesFeed.SavePendingEdits()) RefreshFeed(); });
         menu.Items.Add(new Separator());
         AddMenu(menu, "Back up library…", Backup);
         AddMenu(menu, "Restore backup…", RestoreBackup);
@@ -447,6 +495,7 @@ public partial class MainWindow : Window
     private void ChangeProfilePicture() => ShowProfile(true);
     private void ShowProfile(bool choosePicture)
     {
+        if (IsImportingImages) return;
         var dialog = new ProfileDialog(_store, _profile, TryApplyProfile) { Owner = this };
         if (choosePicture) dialog.Loaded += (_, _) => dialog.ChoosePicture();
         dialog.ShowDialog();
@@ -484,13 +533,13 @@ public partial class MainWindow : Window
     }
     private void Backup()
     {
-        if (!NotesFeed.SavePendingEdits() || !SaveDraft()) return;
+        if (IsImportingImages || !NotesFeed.SavePendingEdits() || !SaveDraft()) return;
         try { SafetyBackup("backup"); ClearError("backup"); }
         catch (Exception ex) { SetError("backup", "The backup could not be saved.", ex); }
     }
     private void RestoreBackup()
     {
-        if (!NotesFeed.SavePendingEdits() || !SaveDraft()) return;
+        if (IsImportingImages || !NotesFeed.SavePendingEdits() || !SaveDraft()) return;
         var picker = new OpenFileDialog { Title = "Restore a ClearNote backup", InitialDirectory = Directory.Exists(BackupFolder) ? BackupFolder : _store.RootPath, Filter = "ClearNote backup|*.zip" };
         if (picker.ShowDialog(this) != true) return;
         if (DialogBox.Show(this, "Replace your library with this backup? Your current data will be preserved first.", "Restore library", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
@@ -535,6 +584,8 @@ public partial class MainWindow : Window
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (IsImportingImages && (e.Key == Key.F5 || Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.Enter or Key.S))
+        { e.Handled = true; return; }
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Enter && Composer.IsKeyboardFocusWithin)
         { PostNote(); e.Handled = true; }
         else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.S)
@@ -546,8 +597,29 @@ public partial class MainWindow : Window
     }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (IsImportingImages) { _closeAfterImport = true; e.Cancel = true; return; }
         _draftTimer.Stop();
         if (!NotesFeed.SavePendingEdits() || !SaveDraft()) { e.Cancel = true; return; }
+    }
+    private void UpdateImageImportState()
+    {
+        var ready = !IsImportingImages;
+        foreach (var button in new[] { NotesButton, ReviewButton, MemoButton, SearchButton, MoreButton, ImageButton })
+            button.IsEnabled = ready;
+        SearchBox.IsEnabled = ready;
+        NotesFeed.IsEnabled = ready;
+        if (!ready) SearchPopup.IsOpen = false;
+        UpdateSelection();
+        if (ready && _draftDirty)
+        {
+            _draftTimer.Stop();
+            _draftTimer.Start();
+        }
+        if (ready && _closeAfterImport)
+        {
+            _closeAfterImport = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Close));
+        }
     }
     private static readonly Brush Ink = BrushesFor("#0F1419");
     private static readonly Brush Muted = BrushesFor("#536471");
