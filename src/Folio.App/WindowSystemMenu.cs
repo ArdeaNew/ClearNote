@@ -7,15 +7,14 @@ namespace Folio.App;
 /// <summary>Owns native-frame commands and follows the window's lifetime, without touching note state.</summary>
 internal sealed class WindowSystemMenu : IDisposable
 {
-    private const int InitMenuPopup = 0x0117, SystemCommand = 0x0112;
+    private const int InitMenuPopup = 0x0117, UninitMenuPopup = 0x0125,
+        ExitMenuLoop = 0x0212, SystemCommand = 0x0112;
     private const uint Size = 0xF000, Move = 0xF010, Minimize = 0xF020,
         Maximize = 0xF030, Close = 0xF060, Restore = 0xF120;
-    private const uint ResizeHeight = 0x0100;
-    private const uint BottomEdge = 6;
     private const uint ByPosition = 0x0400, Separator = 0x0800;
     private readonly Window _window;
     private HwndSource? _source;
-    private bool _disposed;
+    private bool _disposed, _popupOpen;
 
     internal WindowSystemMenu(Window window)
     {
@@ -45,20 +44,22 @@ internal sealed class WindowSystemMenu : IDisposable
     private void Refresh()
     {
         if (_source is not { IsDisposed: false }) return;
-        UpdateMenu(GetSystemMenu(_source.Handle, false), _window.WindowState);
+        UpdateMenu(GetSystemMenu(_source.Handle, false), _window.WindowState, _popupOpen);
     }
 
-    internal static void UpdateMenu(IntPtr menu, WindowState state)
+    internal static void UpdateMenu(IntPtr menu, WindowState state, bool popupOpen)
     {
         if (menu == IntPtr.Zero) return;
         // Remove only commands owned by the native frame, preserving Close and any extension items.
-        foreach (var command in new[] { Size, Move, Minimize, Maximize, Restore, ResizeHeight })
+        foreach (var command in new[] { Size, Move, Minimize, Maximize, Restore })
             DeleteMenu(menu, command, 0);
         TrimSeparators(menu);
         if (state == WindowState.Normal)
         {
             InsertMenu(menu, Close, 0, Move, "&Move");
-            InsertMenu(menu, Close, 0, ResizeHeight, "Resize &height");
+            // Keep native SC_SIZE available for standard frame resizing between popups.
+            // Hide it only while the menu is visible; width constraints remain in WPF.
+            if (!popupOpen) InsertMenu(menu, Close, 0, Size, "&Size");
             InsertMenu(menu, Close, 0, Minimize, "Mi&nimize");
         }
         else
@@ -86,19 +87,24 @@ internal sealed class WindowSystemMenu : IDisposable
 
     private IntPtr OnWindowMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == InitMenuPopup && wParam == GetSystemMenu(handle, false)) Refresh();
+        if (message == InitMenuPopup && wParam == GetSystemMenu(handle, false))
+        {
+            _popupOpen = true;
+            Refresh();
+        }
+        else if ((message == UninitMenuPopup && wParam == GetSystemMenu(handle, false)) ||
+            (message == ExitMenuLoop && _popupOpen))
+        {
+            _popupOpen = false;
+            Refresh();
+        }
         if (message != SystemCommand) return IntPtr.Zero;
         var command = (uint)wParam.ToInt64() & 0xFFF0;
         if (command == Maximize)
         {
             handled = true;
-            return IntPtr.Zero;
         }
-        if (command != ResizeHeight || _window.WindowState != WindowState.Normal) return IntPtr.Zero;
-        // Bottom-edge native resizing gives this command an immediate, vertical-only effect.
-        // Close/Alt+F4 and Restore retain the normal WPF/native processing path.
-        handled = true;
-        return DefWindowProc(handle, message, new IntPtr(Size + BottomEdge), lParam);
+        return IntPtr.Zero;
     }
 
     public void Dispose()
@@ -134,6 +140,4 @@ internal sealed class WindowSystemMenu : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetMenuDefaultItem(IntPtr menu, uint item, [MarshalAs(UnmanagedType.Bool)] bool byPosition);
-    [DllImport("user32.dll", EntryPoint = "DefWindowProcW")]
-    private static extern IntPtr DefWindowProc(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
 }

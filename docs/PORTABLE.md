@@ -1,4 +1,4 @@
-# ClearNote 1.9.5
+# ClearNote 1.9.6
 
 An offline notebook for Windows, built around a continuous feed.
 

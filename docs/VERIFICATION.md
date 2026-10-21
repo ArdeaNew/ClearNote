@@ -1,6 +1,6 @@
 # Verification
 
-ClearNote 1.9.5.
+ClearNote 1.9.6.
 
 ## Checks
 
@@ -12,7 +12,7 @@ ClearNote 1.9.5.
 
 Core checks cover saved formats, atomic writes, drafts, profiles, image ownership, deletion, recovery, backup and restore.
 
-UI checks cover editing, lists, formatting, Notes/Memo separation, search, tags, spaced review, galleries, profile changes, window commands and pending-import handling.
+UI checks cover editing, lists, formatting, Notes/Memo separation, search, tags, spaced review, galleries, profile changes, native height changes, window-menu lifecycle and pending-import handling.
 
 Image checks include 65 codec/pixel-format combinations, eight EXIF orientations, eight JPEG/PNG container regressions, clipboard alternatives, source preservation, cold previews and failure recovery.
 
