@@ -23,19 +23,11 @@ A white page, fine dividers and quiet controls. Text and pictures share the same
 Markdown shortcuts, color and highlights keep writing flexible. Add up to four pictures; their originals stay unchanged. Your name and avatar make the notebook yours, without an account.
 
 <details>
-<summary>Install, local files and building</summary>
+<summary>Install and local files</summary>
 
 Use **Windows x64** with the **.NET 10 Desktop Runtime**. Extract the download into a writable folder and open `ClearNote.exe`. Current releases are [unsigned](docs/CODE_SIGNING.md).
 
 Your notes, pictures, drafts and preferences stay beside the executable in **Log**. Keep that folder when moving or updating the app. Back up or restore your library from the menu.
-
-To build on Windows with the .NET 10 SDK:
-
-```powershell
-./src/build.ps1
-```
-
-See [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md) and [verification](docs/VERIFICATION.md).
 
 </details>
 
