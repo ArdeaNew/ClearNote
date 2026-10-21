@@ -16,7 +16,15 @@ Width checks verify an exact multiplication by 1.07 or 0.93 for each accepted ac
 
 The black-and-white alien mark uses matching geometry in the WPF avatar, SVG and multiresolution ICO. All ten ICO frames, from 16 to 256 pixels, decode and have the expected dimensions. Small-size and enlarged previews were inspected.
 
-The Notes and Memo examples are rendered from application controls at a 662 by 754 DIP client area, using demonstration data. They are not captures of a user's desktop or notebook. In-memory rendering does not establish that the installed application was launched or that native pointer input was exercised.
+The 14-image Screenshots guide is rendered by `GuideRenderer` from application controls and a new example library. Overview and feed images use a 662-DIP reading column; focused figures crop the relevant control. Images render at twice their logical size for clear text. Popup children and menus are composed with their surrounding controls, while the hover comparison applies the application's hover paint offscreen. These are control illustrations rather than desktop captures.
+
+Regenerate the guide on Windows after building the solution:
+
+```powershell
+dotnet run --project src/Folio.Tests/Folio.UiTests/Folio.UiTests.csproj -c Release --no-build -- src/work/checks --render-guide --output docs/images/guide
+```
+
+Review every generated figure for complete controls, legible labels and agreement with the README before committing the PNG files. Example libraries and check output stay outside the documentation assets.
 
 ## Distribution
 

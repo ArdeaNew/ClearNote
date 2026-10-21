@@ -26,7 +26,7 @@ internal static class Program
         var application = new App();
         application.InitializeComponent();
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        if (args.Contains("--render") || args.Contains("--render-home") || args.Contains("--render-features") || args.Contains("--prepare-welcome"))
+        if (args.Contains("--render") || args.Contains("--render-home") || args.Contains("--render-features") || args.Contains("--render-guide") || args.Contains("--prepare-welcome"))
         {
             var outputIndex = Array.IndexOf(args, "--output");
             var output = outputIndex >= 0 && outputIndex + 1 < args.Length ? args[outputIndex + 1] : Path.Combine(Environment.CurrentDirectory, "outputs");
@@ -38,6 +38,7 @@ internal static class Program
                     if (libraryIndex < 0 || libraryIndex + 1 >= args.Length) throw new ArgumentException("Choose a new library folder.");
                     PreviewRenderer.PrepareWelcome(Path.GetFullPath(args[libraryIndex + 1]), Path.GetFullPath(output));
                 }
+                else if (args.Contains("--render-guide")) GuideRenderer.Render(_root, Path.GetFullPath(output));
                 else if (args.Contains("--render-features")) PreviewRenderer.RenderFeatures(_root, Path.GetFullPath(output));
                 else if (args.Contains("--render-home")) PreviewRenderer.RenderEmptyHome(_root, Path.GetFullPath(output));
                 else PreviewRenderer.Render(_root, Path.GetFullPath(output));

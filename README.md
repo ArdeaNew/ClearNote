@@ -2,7 +2,9 @@
 
 # ClearNote
 
-A quiet, offline notebook for Windows. Capture ideas, keep everyday information close, and return to learning notes through spaced review.
+An offline notebook for Windows, built around a continuous feed. Capture ideas, keep everyday information close, and revisit learning notes through spaced review.
+
+[Download for Windows](https://github.com/ArdeaNew/ClearNote/releases/latest) · [Install](#run) · [Build from source](#build)
 
 ## Features
 
@@ -18,11 +20,71 @@ The interface is English, with a white background and dark text. Latin text uses
 
 ## Screenshots
 
-| Notes | Memo |
-| --- | --- |
-| ![Notes with a compact image gallery](docs/images/notes.png) | ![Memo with everyday information](docs/images/memo.png) |
+A composer above a continuous feed. White space, fine dividers and borderless controls keep the notes easy to scan.
 
-These images use demonstration data rendered with the application's own controls.
+<img src="docs/images/guide/overview.png" width="760" alt="ClearNote Notes feed with a composer, readable text, larger avatars and compact pictures">
+
+### Capture a thought
+
+Write at the top and click **Post**, or press **Ctrl+Enter**.
+
+<img src="docs/images/guide/compose.png" width="760" alt="A new thought in the composer with the Post button ready">
+
+### Shape the text, then edit in place
+
+Use Markdown headings and lists. Select text to add a color or highlight with the toolbar.
+
+<img src="docs/images/guide/formatting.png" width="760" alt="Headings, an ordered list, colored text and a highlight in the note editor">
+
+Double-click a post to edit it in the feed. **Save** keeps the changes; **Cancel** restores the saved note.
+
+<img src="docs/images/guide/edit.png" width="760" alt="A post being edited in place with a compact formatting toolbar and Save and Cancel actions">
+
+### Add a tag. Return to the idea.
+
+Type **#** for existing tags in the current feed; **Tab** or **Enter** accepts a suggestion. Open **Review** to choose what to revisit.
+
+| Tag suggestions | Review by tag |
+| --- | --- |
+| <img src="docs/images/guide/tag-suggestions.png" width="340" alt="Existing hashtag suggestions beside the note being written"> | <img src="docs/images/guide/review-menu.png" width="340" alt="Review menu with All tags and individual learning tags"> |
+
+Scroll through a spaced review feed. A sufficiently visible note records one review per round; everyday Memo posts stay separate.
+
+<img src="docs/images/guide/review.png" width="760" alt="The Review feed focused on a selected learning tag">
+
+### Keep everyday details close
+
+**Memo** has its own feed and draft for reference information that does not need spaced review.
+
+<img src="docs/images/guide/memo.png" width="760" alt="The separate Memo feed with practical reference notes and its own composer">
+
+Open the magnifier to search the current feed. The search field appears only when needed.
+
+<img src="docs/images/guide/search.png" width="760" alt="The compact Search popup and matching notes in the current feed">
+
+### Give pictures their place
+
+Add up to four pictures. The compact gallery keeps their proportions; use its arrows or **Shift+wheel** to browse, or focus the gallery and press **Left/Right**. Imported pictures are copied, leaving the originals unchanged.
+
+<img src="docs/images/guide/gallery.png" width="760" alt="Compact landscape and portrait pictures in a note with horizontal gallery navigation">
+
+### Make it yours
+
+Right-click an avatar for **Edit profile** or **Change picture**. Your chosen name and picture appear throughout the notebook.
+
+| Avatar actions | Local profile |
+| --- | --- |
+| <img src="docs/images/guide/avatar-menu.png" width="340" alt="A note avatar with the Edit profile and Change picture menu"> | <img src="docs/images/guide/profile.png" width="340" alt="Profile dialog with picture selection and a display name field"> |
+
+### A little feedback. Room to read.
+
+Hover gives the whole post a soft gray background while the text stays dark and readable.
+
+<img src="docs/images/guide/hover.png" width="760" alt="The same post at rest and with its subtle gray hover background">
+
+Choose **Wider** or **Narrower** from the menu. ClearNote remembers the reading width and starts with a tall window fitted to the display.
+
+<img src="docs/images/guide/width.png" width="760" alt="The same note at two reading widths with text wrapping naturally">
 
 ## Run
 
