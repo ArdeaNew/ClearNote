@@ -4,7 +4,7 @@ ClearNote is a small, offline Windows notebook. Contributions should keep its qu
 
 ## Development setup
 
-Use Windows x64, PowerShell and the .NET 10 SDK with its desktop targeting support. The executable needs the .NET 10 Desktop Runtime. The projects use only the .NET and WPF libraries supplied by Microsoft; there are no NuGet package dependencies to install manually.
+Use Windows x64, PowerShell and the .NET 10 SDK with its desktop targeting support. The published executable includes the runtime. The projects use only the .NET and WPF libraries supplied by Microsoft; there are no NuGet package dependencies to install manually.
 
 From a clean source checkout, run:
 

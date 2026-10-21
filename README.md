@@ -4,7 +4,7 @@
 
 **An offline notebook for Windows, built around a continuous feed.**
 
-[Download for Windows](https://github.com/ArdeaNew/ClearNote/releases/download/v1.9.4/ClearNote-1.9.4-Windows.zip) · [Quick guide](docs/USAGE.md)
+[Download ClearNote.exe](https://github.com/ArdeaNew/ClearNote/releases/latest/download/ClearNote.exe) · [Quick guide](docs/USAGE.md)
 
 <img src="docs/images/showcase/feed-scroll.gif" width="678" alt="Scrolling through ClearNote: short notes, photographs and lists in one continuous feed">
 
@@ -25,7 +25,7 @@ Markdown shortcuts, color and highlights keep writing flexible. Add up to four p
 <details>
 <summary>Install and local files</summary>
 
-Use **Windows x64** with the **.NET 10 Desktop Runtime**. Extract the download into a writable folder and open `ClearNote.exe`. Current releases are [unsigned](docs/CODE_SIGNING.md).
+Download `ClearNote.exe` into a writable folder and open it. **Windows x64. No installation required.** The runtime is included. Current releases are [unsigned](docs/CODE_SIGNING.md).
 
 Your notes, pictures, drafts and preferences stay beside the executable in **Log**. Keep that folder when moving or updating the app. Back up or restore your library from the menu.
 

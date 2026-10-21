@@ -52,9 +52,11 @@ jobs:
 
       - name: Publish portable executable
         run: |
-          dotnet publish src/Folio.App/Folio.App.csproj -c Release -p:PublishProfile=Portable -m:1 -p:UseSharedCompilation=false --nologo -o ./app
+          dotnet publish src/Folio.App/Folio.App.csproj -c Release -p:PublishProfile=Portable -p:DebugType=None -p:DebugSymbols=false -m:1 -p:UseSharedCompilation=false --nologo -o ./app
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
           if (-not (Test-Path -LiteralPath ./app/ClearNote.exe -PathType Leaf)) { throw 'Portable executable is missing.' }
+          ./src/tools/Verify-Portable.ps1 -Path ./app/ClearNote.exe
+          ./src/tools/Test-PortableStartup.ps1 -Path ./app/ClearNote.exe
           Copy-Item -LiteralPath ./docs/PORTABLE.md -Destination ./app/README.md
           Copy-Item -LiteralPath ./LICENSE -Destination ./app
 

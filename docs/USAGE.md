@@ -1,6 +1,6 @@
 # A quick look at ClearNote
 
-[Download](https://github.com/ArdeaNew/ClearNote/releases/download/v1.9.4/ClearNote-1.9.4-Windows.zip) · [Back to ClearNote](../README.md)
+[Download ClearNote.exe](https://github.com/ArdeaNew/ClearNote/releases/latest/download/ClearNote.exe) · [Back to ClearNote](../README.md)
 
 ## Write. Post. Keep scrolling.
 

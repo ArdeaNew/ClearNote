@@ -1,6 +1,6 @@
 # Verification
 
-ClearNote 1.9.4.
+ClearNote 1.9.5.
 
 ## Checks
 
@@ -23,5 +23,7 @@ The long image and scrolling animation render the application's own feed control
 ## Release validation
 
 Publish the executable from a successful Windows workflow for the exact tagged commit. Check its product and file version, archive contents and SHA256 hashes before attaching the release.
+
+The standalone EXE includes its .NET/WPF runtime and native dependencies. Bundle checks reject external framework requirements, missing runtime files and loose dependencies. An isolated startup check runs the published EXE without showing a window and verifies that CoreCLR loads from the bundle.
 
 The portable archive contains only `ClearNote.exe`, `README.md` and `LICENSE`. Test libraries, diagnostics, original photographs and build intermediates are excluded.

@@ -1,8 +1,8 @@
-# ClearNote 1.9.4
+# ClearNote 1.9.5
 
 An offline notebook for Windows, built around a continuous feed.
 
-Extract this folder to a writable location and open ClearNote.exe. Requires Windows x64 and the Microsoft .NET 10 Desktop Runtime.
+Save ClearNote.exe in a writable folder and open it. Windows x64. No installation or separate runtime is required.
 
 Write at the top and click Post. Double-click a post to edit. Notes holds ideas, Memo keeps everyday details, and Review revisits learning notes by tag.
 

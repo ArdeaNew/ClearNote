@@ -3,7 +3,7 @@
 .SYNOPSIS
 Creates a verified, portable ClearNote package containing the app, README and license.
 .EXAMPLE
-.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.4
+.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.5
 #>
 [CmdletBinding()]
 param(
@@ -55,6 +55,7 @@ if ($executable.VersionInfo.ProductName -ne 'ClearNote' -or
     ([version]$executable.VersionInfo.FileVersion).ToString(3) -ne $numericVersion) {
     throw 'The executable product and version must match the requested package.'
 }
+& (Join-Path $PSScriptRoot 'Verify-Portable.ps1') -Path $executable.FullName -ExpectedVersion $numericVersion | Out-Null
 
 function Remove-PackageStaging {
     param([string]$Path, [string]$WorkDirectory)
