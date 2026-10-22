@@ -14,7 +14,7 @@ Write at the top. Scroll through your ideas. Double-click a post to edit it wher
 - **Review** — spaced review of Notes, filtered by tag.
 - **Memo** — a separate stream for everyday reference.
 - **Opinions** — other voices, excerpts and sentences worth keeping.
-- **Economic Analysis** — observations, data and economic thinking.
+- **Analysis** — observations, data and economic thinking.
 
 ## Room for the things you notice
 

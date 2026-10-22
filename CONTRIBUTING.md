@@ -59,7 +59,7 @@ dotnet run --project src/Folio.Tests/Folio.UiTests/Folio.UiTests.csproj -c Relea
 python src/tools/Encode-Showcase.py ./work/showcase ./work/showcase/feed-scroll.gif
 ```
 
-The optional GIF encoder requires Pillow. It is a documentation tool, not an application dependency. Review the long feed, animation, Memo, Review, Opinions and Economic Analysis images, then copy only those six exports into `docs/images/showcase`. The renderer uses actual application controls and an isolated example library. Do not commit source photographs, frame sequences, manifests or example libraries; exported images contain no source-file metadata.
+The optional GIF encoder requires Pillow. It is a documentation tool, not an application dependency. Review the long feed, animation, Memo, Review, Opinions and Analysis images, then copy only those six exports into `docs/images/showcase`. The renderer uses actual application controls and an isolated example library. Do not commit source photographs, frame sequences, manifests or example libraries; exported images contain no source-file metadata.
 
 ## Pull requests and issue reports
 

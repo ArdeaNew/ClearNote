@@ -41,7 +41,7 @@ internal static class CollectionFeedChecks
         try
         {
             var names = new[] { "NotesButton", "ReviewButton", "MemoButton", "OpinionsButton", "EconomicAnalysisButton" };
-            var labels = new[] { "Notes", "Review", "Memo", "Opinions", "Economic Analysis" };
+            var labels = new[] { "Notes", "Review", "Memo", "Opinions", "Analysis" };
             Assert(names.Select(name => Get<Button>(window, name).Content?.ToString()).SequenceEqual(labels),
                 "The navigation must name the two new streams and retain Notes, Review and Memo in order.");
             foreach (var width in new[] { 662d, 544d })
@@ -56,6 +56,16 @@ internal static class CollectionFeedChecks
                     "Default and minimum window widths must show all five full tabs before Search and More without overlap.");
                 Assert(Get<ScrollViewer>(window, "CollectionNavigation").ScrollableWidth < 1,
                     "Ordinary supported widths must not need horizontal navigation scrolling.");
+                foreach (var name in names)
+                {
+                    var button = Get<Button>(window, name);
+                    var shell = (Border)button.Template.FindName("Shell", button);
+                    var content = (ContentPresenter)shell.Child;
+                    var origin = content.TranslatePoint(new Point(), shell);
+                    Assert(Math.Abs(origin.X + content.ActualWidth / 2 - shell.ActualWidth / 2) <= 1 &&
+                        Math.Abs(origin.Y + content.ActualHeight / 2 - shell.ActualHeight / 2) <= 1,
+                        "Navigation text must remain centered within its hover background on both axes.");
+                }
             }
             Layout(window, 360);
             var navigation = Get<ScrollViewer>(window, "CollectionNavigation");
@@ -65,7 +75,7 @@ internal static class CollectionFeedChecks
             Layout(window, 360);
             var analysis = Bounds(window, Get<Button>(window, "EconomicAnalysisButton"));
             Assert(analysis.Left >= 0 && analysis.Right <= Bounds(window, Get<Button>(window, "SearchButton")).Left + 0.5,
-                "Scrolling the narrow tab strip must reveal the complete Economic Analysis label without covering Search.");
+                "Scrolling the narrow tab strip must reveal the complete Analysis label without covering Search.");
         }
         finally { window.Close(); }
     }
@@ -109,7 +119,7 @@ internal static class CollectionFeedChecks
                     store.LoadDraft(stream.Collection) is null && feed.RenderedCards.All(row => row.Card.Collection == stream.Collection),
                     "Posting in a new stream must commit only that stream and clear only its own draft.");
                 Assert(store.LoadDraft(NoteCollection.Notes) is not null && store.LoadDraft(NoteCollection.Memo) is not null,
-                    "Posting Opinions or Economic Analysis must retain the Notes and Memo drafts.");
+                    "Posting Opinions or Analysis must retain the Notes and Memo drafts.");
                 draftText[stream.Collection] = "After post " + stream.Collection;
                 composer.PlainText = draftText[stream.Collection];
                 media.AddImages([image]);
@@ -130,23 +140,23 @@ internal static class CollectionFeedChecks
             row.SaveNote = (_, _) => false;
             Click(window, "OpinionsButton");
             Assert(Collection(window) == NoteCollection.EconomicAnalysis && row.IsEditing && row.Body.PlainText.Contains("Uncommitted analysis"),
-                "A rejected Economic Analysis inline save must stop navigation and preserve its editor.");
+                "A rejected Analysis inline save must stop navigation and preserve its editor.");
             row.SaveNote = save;
             row.CancelEdit();
 
             var search = Get<TextBox>(window, "SearchBox");
             search.Text = "opiniontag";
-            Assert(feed.RenderedCards.Count == 0, "Economic Analysis search must never return an Opinions post.");
+            Assert(feed.RenderedCards.Count == 0, "Analysis search must never return an Opinions post.");
             search.Text = "analysistag";
             Assert(feed.RenderedCards.Single().Card.Id == seeds[NoteCollection.EconomicAnalysis].Id,
-                "Economic Analysis search must find its own content.");
+                "Analysis search must find its own content.");
             search.Clear();
             var tags = Field<IReadOnlyList<string>>(window, "_knownTags");
             Assert(tags.Contains("analysistag") && !tags.Contains("opiniontag") && !tags.Contains("learningtag"),
-                "Economic Analysis tag suggestions must be scoped to its independent feed.");
+                "Analysis tag suggestions must be scoped to its independent feed.");
             Click(window, "OpinionsButton");
             search.Text = "analysistag";
-            Assert(feed.RenderedCards.Count == 0, "Opinions search must exclude Economic Analysis content.");
+            Assert(feed.RenderedCards.Count == 0, "Opinions search must exclude Analysis content.");
             search.Clear();
             tags = Field<IReadOnlyList<string>>(window, "_knownTags");
             Assert(tags.Contains("opiniontag") && !tags.Contains("analysistag"), "Opinions must retain its own tag vocabulary.");

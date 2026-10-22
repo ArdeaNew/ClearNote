@@ -3,7 +3,7 @@
 .SYNOPSIS
 Creates a verified, portable ClearNote package containing the app, README and license.
 .EXAMPLE
-.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.7
+.\tools\Package.ps1 -OutputDirectory D:\Releases -Version 1.9.8
 #>
 [CmdletBinding()]
 param(

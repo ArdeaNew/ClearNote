@@ -52,7 +52,7 @@ Log/
     opinions-draft.json                        (when saved)
     opinions-draft.previous.json               (Opinions draft recovery)
     economic-analysis-draft.json               (when saved)
-    economic-analysis-draft.previous.json      (Economic Analysis draft recovery)
+    economic-analysis-draft.previous.json      (Analysis draft recovery)
     profile.json                              (optional)
     delete.pending.json                       (only during interrupted deletion)
   Backups/                                    (explicit exports)
@@ -62,7 +62,7 @@ Log/
 
 `window.json` contains presentation settings rather than review or note content and is excluded from library archives. Restoring a library preserves the former Data directory beside the new one. The optional `--data` argument selects a separate library directory for development and recovery work. Never use real notebook data as a fixture.
 
-`CardDocument.Collection` identifies Notes, Memo, Opinions or Economic Analysis. Schema 6 persists all four collections; the reader accepts schemas 1–6 and preserves earlier Notes/Memo identities. An absent collection defaults to Notes. Collections share a library snapshot, asset directory and local profile. Fixed, separate draft filenames preserve each composer's in-progress text and attachments. Core prevents an existing note from changing collection through `Upsert`. Scheduler selection and direct browse recording use Notes only.
+`CardDocument.Collection` identifies Notes, Memo, Opinions or Analysis. Schema 6 persists all four collections; the reader accepts schemas 1–6 and preserves earlier Notes/Memo identities. An absent collection defaults to Notes. Collections share a library snapshot, asset directory and local profile. Fixed, separate draft filenames preserve each composer's in-progress text and attachments. Core prevents an existing note from changing collection through `Upsert`. Scheduler selection and direct browse recording use Notes only.
 
 The local identity is shared, rather than copied into every post. Changing a name or avatar updates the displayed authors while preserving note content, review history and editing buffers. Default identity and first-run welcome creation belong to App. Welcome posts are ordinary Core documents; a saved empty library is not new and never repopulates deleted posts.
 

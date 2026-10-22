@@ -20,11 +20,11 @@ Collect viewpoints and excerpts, with their sources alongside them.
 
 <img src="images/showcase/opinions.png" width="678" alt="The Opinions feed for viewpoints, excerpts and memorable sentences">
 
-## Make room for Economic Analysis
+## Make room for Analysis
 
 Keep economic observations, data and research in their own feed.
 
-<img src="images/showcase/economic-analysis.png" width="678" alt="The Economic Analysis feed for observations, research and economic notes">
+<img src="images/showcase/economic-analysis.png" width="678" alt="The Analysis feed for observations, research and economic notes">
 
 ## Return to what you want to remember
 

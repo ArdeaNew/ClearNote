@@ -12,11 +12,11 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <ScrollViewer x:Name="CollectionNavigation" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="HorizontalOnly" Focusable="False" PreviewMouseWheel="Navigation_Wheel" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal">
-                    <Button x:Name="NotesButton" Content="Notes" Style="{StaticResource QuietButton}" Width="58" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" FontWeight="SemiBold" ToolTip="All notes" />
-                    <Button x:Name="ReviewButton" Content="Review" Click="Review_Click" Style="{StaticResource QuietButton}" Width="68" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Review by tag" />
-                    <Button x:Name="MemoButton" Content="Memo" Style="{StaticResource QuietButton}" Width="54" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Everyday reference" />
-                    <Button x:Name="OpinionsButton" Content="Opinions" Style="{StaticResource QuietButton}" Width="80" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Collected viewpoints and excerpts" />
-                    <Button x:Name="EconomicAnalysisButton" Content="Economic Analysis" Style="{StaticResource QuietButton}" Width="156" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Economic analysis" />
+                    <Button x:Name="NotesButton" Content="Notes" Style="{StaticResource NavigationButton}" FontWeight="SemiBold" ToolTip="All notes" />
+                    <Button x:Name="ReviewButton" Content="Review" Click="Review_Click" Style="{StaticResource NavigationButton}" ToolTip="Review by tag" />
+                    <Button x:Name="MemoButton" Content="Memo" Style="{StaticResource NavigationButton}" ToolTip="Everyday reference" />
+                    <Button x:Name="OpinionsButton" Content="Opinions" Style="{StaticResource NavigationButton}" ToolTip="Collected viewpoints and excerpts" />
+                    <Button x:Name="EconomicAnalysisButton" Content="Analysis" Style="{StaticResource NavigationButton}" ToolTip="Economic analysis" />
                 </StackPanel>
                 </ScrollViewer>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

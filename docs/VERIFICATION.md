@@ -1,6 +1,6 @@
 # Verification
 
-ClearNote 1.9.7.
+ClearNote 1.9.8.
 
 ## Checks
 
@@ -18,7 +18,7 @@ Image checks include 65 codec/pixel-format combinations, eight EXIF orientations
 
 ## Visual examples
 
-The long image and scrolling animation render the application's own feed controls. Memo, Opinions, Economic Analysis and Review use the same interface and example content.
+The long image and scrolling animation render the application's own feed controls. Memo, Opinions, Analysis and Review use the same interface and example content.
 
 ## Release validation
 

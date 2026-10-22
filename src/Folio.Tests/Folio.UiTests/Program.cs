@@ -74,7 +74,7 @@ internal static class Program
         Check("Images import, paste, persist and survive independent editing", () => MediaChecks.Run(_root));
         Check("Compact image galleries preserve proportions and navigate without trapping feed scroll", () => GalleryChecks.Run(_root));
         Check("Memo keeps its own feed and drafts while sharing editing, search and identity", () => MemoChecks.Run(_root));
-        Check("Opinions and Economic Analysis retain independent feeds, drafts, navigation and image ownership", () => CollectionFeedChecks.Run(_root));
+        Check("Opinions and Analysis retain independent feeds, drafts, navigation and image ownership", () => CollectionFeedChecks.Run(_root));
         Check("Hashtags complete natively and filter Review without repeat counts", TagFiltering);
         Check("Image-only composer drafts reopen and post into the feed", ComposerImages);
         Check("Attachment failures explain recovery and log safely without losing drafts", () => ErrorHandlingChecks.Run(_root));
