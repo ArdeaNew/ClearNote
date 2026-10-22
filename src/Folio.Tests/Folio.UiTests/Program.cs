@@ -74,6 +74,7 @@ internal static class Program
         Check("Images import, paste, persist and survive independent editing", () => MediaChecks.Run(_root));
         Check("Compact image galleries preserve proportions and navigate without trapping feed scroll", () => GalleryChecks.Run(_root));
         Check("Memo keeps its own feed and drafts while sharing editing, search and identity", () => MemoChecks.Run(_root));
+        Check("Opinions and Economic Analysis retain independent feeds, drafts, navigation and image ownership", () => CollectionFeedChecks.Run(_root));
         Check("Hashtags complete natively and filter Review without repeat counts", TagFiltering);
         Check("Image-only composer drafts reopen and post into the feed", ComposerImages);
         Check("Attachment failures explain recovery and log safely without losing drafts", () => ErrorHandlingChecks.Run(_root));
@@ -436,7 +437,7 @@ internal static class Program
             first.Body.PlainText = "Edited after review";
             Assert(first.TrySave(), "Inline edit must save.");
             Assert(JsonSerializer.Serialize(store.Cards.Single(card => card.Id == first.Card.Id).Memory) == memory, "An edit must preserve the latest stored review state.");
-            Invoke(window, "Notes_Click", window, new RoutedEventArgs());
+            Get<Button>(window, "NotesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             SelectReview(window, "All tags");
             Layout(window);
             feed.CheckVisibleCards();
@@ -531,7 +532,7 @@ internal static class Program
             menu.IsOpen = false;
             Assert(feed.RenderedCards.SequenceEqual(reviewCards) && store.Cards.Sum(card => card.Reviews.Count) == reviewCount,
                 "Cancelling the tag popup must preserve the current review and its history.");
-            Invoke(window, "Notes_Click", window, new RoutedEventArgs());
+            Get<Button>(window, "NotesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert(feed.RenderedCards.Count == 3 && !Descendants(Get<Grid>(window, "Root")).OfType<ComboBox>().Any(), "Notes remains the complete library without an inline filter.");
         }
         finally { window.Close(); }

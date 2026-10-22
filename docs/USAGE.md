@@ -14,6 +14,18 @@ A separate feed and draft for addresses, plans and everyday reference. Memo stay
 
 <img src="images/showcase/memo.png" width="678" alt="The independent Memo feed for everyday reference">
 
+## Keep other voices in Opinions
+
+Collect viewpoints and excerpts, with their sources alongside them.
+
+<img src="images/showcase/opinions.png" width="678" alt="The Opinions feed for viewpoints, excerpts and memorable sentences">
+
+## Make room for Economic Analysis
+
+Keep economic observations, data and research in their own feed.
+
+<img src="images/showcase/economic-analysis.png" width="678" alt="The Economic Analysis feed for observations, research and economic notes">
+
 ## Return to what you want to remember
 
 Type **#tag** as you write. Open **Review** and choose a tag. Scrolling a note into view records one review per round.
@@ -30,4 +42,4 @@ Type **#tag** as you write. Open **Review** and choose a tag. Scrolling a note i
 | Browse pictures | Gallery arrows or Shift+wheel |
 | Change name or avatar | Right-click an avatar |
 
-Notes and Memo save separate drafts automatically. All files stay in **Log**, beside the app.
+Each feed saves its own draft automatically. Review uses Notes only. All files stay in **Log**, beside the app.

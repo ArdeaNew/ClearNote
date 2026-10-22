@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly LibraryStore _store;
     private readonly WindowWidthPreferences _widthPreferences;
     private readonly WindowSystemMenu _windowMenu;
+    private readonly (Button Button, NoteCollection Collection)[] _collectionButtons;
     private readonly DispatcherTimer _draftTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private readonly HashSet<string> _reviewRecorded = new(StringComparer.Ordinal);
     private readonly AttachmentPanel _composerMedia;
@@ -37,6 +38,10 @@ public partial class MainWindow : Window
         _store = store;
         _widthPreferences = new WindowWidthPreferences(Path.GetDirectoryName(store.RootPath)!);
         InitializeComponent();
+        _collectionButtons = [(NotesButton, NoteCollection.Notes), (MemoButton, NoteCollection.Memo),
+            (OpinionsButton, NoteCollection.Opinions), (EconomicAnalysisButton, NoteCollection.EconomicAnalysis)];
+        foreach (var (button, collection) in _collectionButtons)
+            button.Click += (_, _) => SwitchCollection(collection);
         _windowMenu = new WindowSystemMenu(this);
         ApplyFixedWidth(_widthPreferences.Load());
         _composerMedia = new AttachmentPanel(store);
@@ -186,11 +191,12 @@ public partial class MainWindow : Window
         finally { _binding = false; }
     }
 
-    private void Notes_Click(object sender, RoutedEventArgs e)
+    private void Navigation_Wheel(object sender, MouseWheelEventArgs e)
     {
-        SwitchCollection(NoteCollection.Notes);
+        if (CollectionNavigation.ScrollableWidth <= 0) return;
+        CollectionNavigation.ScrollToHorizontalOffset(CollectionNavigation.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
-    private void Memo_Click(object sender, RoutedEventArgs e) => SwitchCollection(NoteCollection.Memo);
 
     private bool SwitchCollection(NoteCollection collection, bool refresh = true)
     {
@@ -305,12 +311,14 @@ public partial class MainWindow : Window
         var query = SearchBox.Text.Trim();
         _appliedSearchText = SearchBox.Text;
         var cards = library.Where(card => MatchesCurrentFilter(card, query)).ToList();
-        NotesButton.Foreground = !_reviewMode && _collection == NoteCollection.Notes ? Ink : Muted;
+        foreach (var (button, collection) in _collectionButtons)
+        {
+            var selected = !_reviewMode && _collection == collection;
+            button.Foreground = selected ? Ink : Muted;
+            button.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
+        }
         ReviewButton.Foreground = _reviewMode ? Ink : Muted;
-        MemoButton.Foreground = _collection == NoteCollection.Memo ? Ink : Muted;
-        NotesButton.FontWeight = !_reviewMode && _collection == NoteCollection.Notes ? FontWeights.SemiBold : FontWeights.Normal;
         ReviewButton.FontWeight = _reviewMode ? FontWeights.SemiBold : FontWeights.Normal;
-        MemoButton.FontWeight = _collection == NoteCollection.Memo ? FontWeights.SemiBold : FontWeights.Normal;
         if (_reviewMode)
         {
             var selected = new HashSet<string>(StringComparer.Ordinal);
@@ -563,7 +571,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { SetError("restore", "The backup could not be restored. Your previous data is preserved.", ex); }
     }
     private void ShowHelp() => DialogBox.Show(this,
-        "Write above and post with Ctrl+Enter. Each feed keeps its own local draft. Use Markdown headings, emphasis, quotes, and lists. Enter continues a numbered list. Code fences stay plain text.\n\nType #tag to add a tag; choose an existing suggestion with Tab or Enter. Click Review and choose a tag from its menu.\n\nAttach up to four images with the image button or paste. Images stay with your notes and backups.\n\nChoose Profile from the menu to set your name and picture. Your local profile appears on every note.\n\nNotes holds learning material. Memo is an independent feed for addresses and everyday reference; its posts never enter Review. Search finds text in the current feed. Double-click a note to edit, or use its menu to edit or delete.\n\nReview puts due notes first. A note counts once when at least half of it (or half the viewport for a long note) enters view. Returning from another feed starts a new round.\n\nCtrl+S saves drafts and edits. F5 refreshes.\n\nData folder\n" + Path.GetDirectoryName(_store.RootPath), "Using ClearNote");
+        "Write above and post with Ctrl+Enter. Each feed keeps its own local draft. Use Markdown headings, emphasis, quotes, and lists. Enter continues a numbered list. Code fences stay plain text.\n\nType #tag to add a tag; choose an existing suggestion with Tab or Enter. Click Review and choose a tag from its menu.\n\nAttach up to four images with the image button or paste. Images stay with your notes and backups.\n\nChoose Profile from the menu to set your name and picture. Your local profile appears on every note.\n\nNotes holds learning material. Memo keeps everyday reference, Opinions collects viewpoints and excerpts, and Economic Analysis keeps economic research. Each has an independent feed and draft. Review uses Notes only. Search finds text in the current feed. Double-click a note to edit, or use its menu to edit or delete.\n\nReview puts due notes first. A note counts once when at least half of it (or half the viewport for a long note) enters view. Returning from another feed starts a new round.\n\nCtrl+S saves drafts and edits. F5 refreshes.\n\nData folder\n" + Path.GetDirectoryName(_store.RootPath), "Using ClearNote");
 
     private void SetError(string source, string text, Exception error)
     {
@@ -604,7 +612,8 @@ public partial class MainWindow : Window
     private void UpdateImageImportState()
     {
         var ready = !IsImportingImages;
-        foreach (var button in new[] { NotesButton, ReviewButton, MemoButton, SearchButton, MoreButton, ImageButton })
+        foreach (var (button, _) in _collectionButtons) button.IsEnabled = ready;
+        foreach (var button in new[] { ReviewButton, SearchButton, MoreButton, ImageButton })
             button.IsEnabled = ready;
         SearchBox.IsEnabled = ready;
         NotesFeed.IsEnabled = ready;

@@ -19,6 +19,10 @@ draft.json
 draft.previous.json
 memo-draft.json
 memo-draft.previous.json
+opinions-draft.json
+opinions-draft.previous.json
+economic-analysis-draft.json
+economic-analysis-draft.previous.json
 profile.json
 delete.pending.json
 portable-storage.json

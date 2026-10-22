@@ -41,6 +41,10 @@ var tests = new (string Name, Action Run)[]
     ("Images and drafts survive Unicode library paths beyond 260 characters", () => CoreImageStorageChecks.UnicodeAndLongPaths(testRoot)),
     ("New-library initialization is atomic and never reseeds a saved empty collection", () => LibraryLifecycleChecks.FirstRun(testRoot)),
     ("Notes and Memo preserve separate drafts, search boundaries, images and backup state", () => MemoChecks.Run(testRoot)),
+    ("Four feeds preserve independent posts, drafts, backups and Notes-only review", () => CollectionChecks.Persistence(testRoot)),
+    ("Every feed isolates draft recovery and concurrent writers", () => CollectionChecks.DraftRecovery(testRoot)),
+    ("All feeds retain shared pictures through draft recovery and deletion", () => CollectionChecks.MediaOwnership(testRoot)),
+    ("Schema upgrades fence old readers without losing prior saves or concurrent changes", () => CollectionChecks.FormatUpgrade(testRoot)),
     ("Deleting a note purges its dedicated local image and both recovery snapshots", () => LibraryLifecycleChecks.DeleteExclusiveImages(testRoot)),
     ("Deleting notes preserves pictures shared by notes, profiles and both draft versions", () => LibraryLifecycleChecks.KeepSharedImages(testRoot)),
     ("Blocked image deletion fails before changing saved content and permits retry", () => LibraryLifecycleChecks.DeletionFailures(testRoot)),
@@ -56,7 +60,7 @@ var tests = new (string Name, Action Run)[]
     ("Markdown keeps fences, indentation and external syntax literal", MarkdownLiterals),
     ("Long and adversarial shorthand stays bounded", MarkdownBounds),
     ("Text colors and paragraph formats validate and copy safely", TextFormatsAndColors),
-    ("Schema 1 through 5 retain history and default new fields", SchemaCompatibility),
+    ("Schema 1 through 6 retain history and default new fields", SchemaCompatibility),
     ("Automatic browsing applies the existing Good update exactly once", AutomaticBrowse),
     ("Unsent drafts persist separately and post with one stable identity", DraftPersistence),
     ("Draft corruption, failed saves and external changes preserve originals", DraftSafety),
@@ -192,7 +196,7 @@ void OptionalImages()
     restored.Restore(zip);
     Assert(!Directory.Exists(restored.AssetDirectory), "Restoring a text-only backup must not create assets.");
     using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(restored.RootPath, "library.json")));
-    Assert(document.RootElement.GetProperty("version").GetInt32() == 5, "New saves must use library schema 5.");
+    Assert(document.RootElement.GetProperty("version").GetInt32() == 6, "New saves must use library schema 6.");
 }
 
 void ImageImportRoundTrip()
@@ -809,7 +813,7 @@ void TextFormatsAndColors()
 
 void SchemaCompatibility()
 {
-    foreach (var version in new[] { 1, 2, 3, 4, 5 })
+    foreach (var version in new[] { 1, 2, 3, 4, 5, 6 })
     {
         var card = Card("Version " + version);
         ReviewScheduler.Apply(card, ReviewRating.Hard, now);
@@ -834,7 +838,7 @@ void SchemaCompatibility()
         Assert(read.Collection == NoteCollection.Notes && !read.Reviews.Single().Automatic && read.Memory.Repetitions == 1 && read.Blocks.Single().Text == "Legacy source" && NoteText.Read(read).Images.Count == 0, "Old review logs, original legacy blocks, collection and optional image defaults must remain intact.");
         store.Upsert(read);
         using var file = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "library.json")));
-        Assert(file.RootElement.GetProperty("version").GetInt32() == 5, "Every new write must publish schema 5.");
+        Assert(file.RootElement.GetProperty("version").GetInt32() == 6, "Every new write must publish schema 6.");
     }
 }
 

@@ -15,6 +15,11 @@ public sealed partial class LibraryStore
     private const string PreviousDraftFile = "draft.previous.json";
     private const string MemoDraftFile = "memo-draft.json";
     private const string PreviousMemoDraftFile = "memo-draft.previous.json";
+    private const string OpinionsDraftFile = "opinions-draft.json";
+    private const string PreviousOpinionsDraftFile = "opinions-draft.previous.json";
+    private const string EconomicAnalysisDraftFile = "economic-analysis-draft.json";
+    private const string PreviousEconomicAnalysisDraftFile = "economic-analysis-draft.previous.json";
+    private const int CurrentLibraryVersion = 6;
     private const long MaxDataBytes = ArchiveLimits.MaxFileBytes;
     private const long MaxAssetBytes = ArchiveLimits.MaxFileBytes;
     private static readonly JsonSerializerOptions Json = new()
@@ -27,6 +32,7 @@ public sealed partial class LibraryStore
     private readonly object _gate = new();
     private List<CardDocument> _cards = [];
     private bool _loaded;
+    private int _libraryVersion;
     private string? _knownHash;
     private readonly Dictionary<NoteCollection, DraftState> _draftStates = [];
     private bool _newLibrary;
@@ -84,6 +90,7 @@ public sealed partial class LibraryStore
         lock (_gate)
         {
             _loaded = false;
+            _libraryVersion = 0;
             _newLibrary = false;
             _draftStates.Clear();
             ResetProfileState();
@@ -132,6 +139,7 @@ public sealed partial class LibraryStore
                 RecoveryNotice = "The library could not be read. Folio recovered the previous complete save.";
             }
             _knownHash = HashFile(primary);
+            _libraryVersion = ReadLibraryVersion(primary);
             _loaded = true;
             if (pendingDeletion is not null) CompleteDeletion(pendingDeletion);
         }
@@ -154,7 +162,7 @@ public sealed partial class LibraryStore
                 existing?.Blocks.Any(old => old.Kind == "image" && old.Id == block.Id && old.AssetName == block.AssetName) != true))
                 throw new InvalidDataException("New pictures must be imported into the continuous note. Legacy image blocks are preserved for recovery only.");
             if (existing is not null && existing.Collection != card.Collection)
-                throw new InvalidOperationException("A saved note cannot move between Notes and Memo.");
+                throw new InvalidOperationException("A saved note cannot move between collections.");
             var candidate = Clone(_cards);
             var saved = Clone(new List<CardDocument> { card })[0];
             if (saved.Note is not null) saved.Note = NoteText.Copy(saved.Note);
@@ -326,7 +334,13 @@ public sealed partial class LibraryStore
                     _ = ReadDraft(path);
                     File.Copy(path, Path.Combine(staging, state.PreviousFile));
                 }
-                File.Copy(Path.Combine(staging, DataFile), Path.Combine(staging, PreviousFile));
+                // A restored older backup must establish the same format boundary as a new save.
+                // Both snapshots must reject old readers before new-feed drafts become visible.
+                var restoredBytes = Serialize(restored);
+                if (restoredBytes.LongLength > MaxDataBytes)
+                    throw new InvalidDataException("The restored library exceeds 64 MB in the current format. Your existing files have not been changed.");
+                WritePrimary(restoredBytes, Path.Combine(staging, PreviousFile));
+                WritePrimary(restoredBytes, Path.Combine(staging, DataFile));
                 var hadOriginal = Directory.Exists(RootPath);
                 if (hadOriginal) Directory.Move(RootPath, rollback);
                 try { Directory.Move(staging, RootPath); }
@@ -337,6 +351,7 @@ public sealed partial class LibraryStore
                 }
                 _cards = restored;
                 _knownHash = HashFile(Path.Combine(RootPath, DataFile));
+                _libraryVersion = CurrentLibraryVersion;
                 _loaded = true;
                 _newLibrary = false;
                 _draftStates.Clear();
@@ -355,22 +370,43 @@ public sealed partial class LibraryStore
         var bytes = Serialize(cards);
         if (bytes.LongLength > MaxDataBytes) throw new InvalidDataException("The library exceeds 64 MB. Your existing files have not been changed.");
         var primary = Path.Combine(RootPath, DataFile);
+        var previous = Path.Combine(RootPath, PreviousFile);
+        EnsureNoLinks(previous);
+        var upgrading = File.Exists(primary) && _libraryVersion < CurrentLibraryVersion;
+        var upgradedPrevious = upgrading ? Serialize(_cards) : null;
+        if (upgradedPrevious?.LongLength > MaxDataBytes)
+            throw new InvalidDataException("The recovery snapshot exceeds 64 MB in the current format. Your existing files have not been changed.");
         var temporary = primary + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             WriteDurably(temporary, bytes);
-            if (File.Exists(primary)) File.Replace(temporary, primary, Path.Combine(RootPath, PreviousFile));
+            if (upgrading)
+            {
+                // Older applications recover unsupported primary files from the previous save.
+                // Upgrade that recovery snapshot first so they cannot roll back a new feed.
+                // A failed first replacement leaves the still-readable old primary untouched.
+                WritePrimary(upgradedPrevious!, previous);
+                EnsureUnchanged();
+                File.Move(temporary, primary, true);
+            }
+            else if (File.Exists(primary)) File.Replace(temporary, primary, previous);
             else
             {
                 // The first successful save also has a recovery copy.
-                WritePrimary(bytes, Path.Combine(RootPath, PreviousFile));
+                WritePrimary(bytes, previous);
                 File.Move(temporary, primary);
             }
             _knownHash = HashFile(primary);
+            _libraryVersion = CurrentLibraryVersion;
             _cards = cards;
             _newLibrary = false;
         }
         finally { TryDeleteFile(temporary); }
+    }
+
+    private void EnsureCurrentLibraryFormat()
+    {
+        if (_libraryVersion < CurrentLibraryVersion) Commit(Clone(_cards));
     }
 
     private void EnsureUnchanged()
@@ -389,16 +425,46 @@ public sealed partial class LibraryStore
 
     private static List<CardDocument> ReadLibrary(string path, string assets, string? deletedId = null)
     {
-        EnsureNoLinks(path);
-        var info = new FileInfo(path);
-        if (!info.Exists || info.Length is <= 0 or > MaxDataBytes) throw new InvalidDataException("The library file is missing, empty or larger than 64 MB.");
-        var payload = JsonSerializer.Deserialize<LibraryFile>(File.ReadAllBytes(path), Json);
-        if (payload is null || payload.Version is not (1 or 2 or 3 or 4 or 5) || payload.Cards is null)
+        using var document = ReadLibraryDocument(path);
+        _ = ReadLibraryVersion(document.RootElement);
+        var payload = document.RootElement.Deserialize<LibraryFile>(Json);
+        if (payload is null || payload.Version is < 1 or > CurrentLibraryVersion || payload.Cards is null)
             throw new InvalidDataException("This library format or version is not supported.");
         // An interrupted deletion is authoritative even when recovering an older snapshot.
         if (deletedId is not null) payload.Cards.RemoveAll(card => card?.Id == deletedId);
         ValidateCards(payload.Cards, assets);
         return payload.Cards;
+    }
+
+    private static JsonDocument ReadLibraryDocument(string path)
+    {
+        EnsureNoLinks(path);
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length is <= 0 or > MaxDataBytes)
+            throw new InvalidDataException("The library file is missing, empty or larger than 64 MB.");
+        return JsonDocument.Parse(File.ReadAllBytes(path));
+    }
+
+    private static int ReadLibraryVersion(string path)
+    {
+        using var document = ReadLibraryDocument(path);
+        return ReadLibraryVersion(document.RootElement);
+    }
+
+    private static int ReadLibraryVersion(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("This library format or version is not supported.");
+        var version = 0;
+        foreach (var property in root.EnumerateObject())
+            if (property.Name.Equals("version", StringComparison.OrdinalIgnoreCase))
+            {
+                if (property.Value.ValueKind != JsonValueKind.Number || !property.Value.TryGetInt32(out version))
+                    throw new InvalidDataException("This library format or version is not supported.");
+            }
+        if (version > CurrentLibraryVersion) throw new UnsupportedLibraryVersionException(version);
+        if (version < 1) throw new InvalidDataException("This library format or version is not supported.");
+        return version;
     }
 
     private static void ValidateCards(List<CardDocument> cards, string assets)
@@ -479,13 +545,16 @@ public sealed partial class LibraryStore
         using var archive = ZipFile.OpenRead(zipPath);
         ArchiveLimits.Validate(archive.Entries.Select(entry => new ArchiveEntrySize(entry.FullName, entry.Length)));
         var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+        var draftFiles = Enum.GetValues<NoteCollection>().Select(collection => new DraftState(collection).File).ToHashSet(StringComparer.Ordinal);
         foreach (var entry in archive.Entries)
         {
             var name = entry.FullName;
             if (string.IsNullOrEmpty(name) || name.Contains('\\') || name.Contains(':') || name.StartsWith('/') ||
                 name.Split('/').Any(s => s is "" or "." or "..") || ((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000 ||
                 !entries.TryAdd(name, entry)) throw new InvalidDataException("The backup contains unsafe or duplicate file paths.");
-            if (name != DataFile && name != ManifestFile && name != DraftFile && name != MemoDraftFile && name != ProfileFile && !(name.StartsWith("assets/", StringComparison.Ordinal) && name.Count(c => c == '/') == 1))
+            if (name != DataFile && name != ManifestFile && name != ProfileFile &&
+                !draftFiles.Contains(name) &&
+                !(name.StartsWith("assets/", StringComparison.Ordinal) && name.Count(c => c == '/') == 1))
                 throw new InvalidDataException("The backup contains an unexpected file.");
         }
         if (!entries.TryGetValue(ManifestFile, out var manifestEntry) || !entries.ContainsKey(DataFile))
@@ -626,7 +695,8 @@ public sealed partial class LibraryStore
 
     private static bool IsWithin(string path, string directory) => path.StartsWith(
         Path.TrimEndingDirectorySeparator(directory) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    private static bool IsDataError(Exception error) => error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException;
+    private static bool IsDataError(Exception error) => error is not UnsupportedLibraryVersionException &&
+        (error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException);
     private static void EnsureNoLinks(string path)
     {
         for (var current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
@@ -648,9 +718,11 @@ public sealed partial class LibraryStore
 
     private sealed class LibraryFile
     {
-        [JsonRequired] public int Version { get; set; } = 5;
+        [JsonRequired] public int Version { get; set; } = CurrentLibraryVersion;
         [JsonRequired] public List<CardDocument>? Cards { get; set; }
     }
+    private sealed class UnsupportedLibraryVersionException(int version) : NotSupportedException(
+        $"This library uses version {version}, which requires a newer application. Its files were preserved; open it with that version to continue.") { }
     private sealed class BackupManifest
     {
         [JsonRequired] public int Version { get; set; } = 1;

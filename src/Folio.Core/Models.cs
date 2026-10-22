@@ -2,8 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace Folio.Core;
 
-/// <summary>Notes participate in spaced repetition; Memo is a separate everyday reference feed.</summary>
-public enum NoteCollection { Notes, Memo }
+/// <summary>Independent feeds; only Notes participate in spaced repetition.</summary>
+public enum NoteCollection { Notes = 0, Memo = 1, Opinions = 2, EconomicAnalysis = 3 }
 
 /// <summary>A5 portrait page, measured in device independent pixels at 96 DPI.</summary>
 public static class PageSize

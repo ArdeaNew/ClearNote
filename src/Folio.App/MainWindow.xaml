@@ -10,11 +10,15 @@
         <Border Background="White" Margin="12,0" Padding="18,0" BorderBrush="#EFF0F1" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="NotesButton" Content="Notes" Click="Notes_Click" Style="{StaticResource QuietButton}" Width="58" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" FontWeight="SemiBold" ToolTip="All notes" />
+                <ScrollViewer x:Name="CollectionNavigation" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="HorizontalOnly" Focusable="False" PreviewMouseWheel="Navigation_Wheel" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="NotesButton" Content="Notes" Style="{StaticResource QuietButton}" Width="58" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" FontWeight="SemiBold" ToolTip="All notes" />
                     <Button x:Name="ReviewButton" Content="Review" Click="Review_Click" Style="{StaticResource QuietButton}" Width="68" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Review by tag" />
-                    <Button x:Name="MemoButton" Content="Memo" Click="Memo_Click" Style="{StaticResource QuietButton}" Width="54" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Everyday reference" />
+                    <Button x:Name="MemoButton" Content="Memo" Style="{StaticResource QuietButton}" Width="54" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Everyday reference" />
+                    <Button x:Name="OpinionsButton" Content="Opinions" Style="{StaticResource QuietButton}" Width="80" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Collected viewpoints and excerpts" />
+                    <Button x:Name="EconomicAnalysisButton" Content="Economic Analysis" Style="{StaticResource QuietButton}" Width="156" Height="34" Padding="0" HorizontalContentAlignment="Left" FontSize="15" Foreground="{StaticResource Muted}" ToolTip="Economic analysis" />
                 </StackPanel>
+                </ScrollViewer>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SearchButton" Click="Search_Click" Style="{StaticResource QuietButton}" Width="32" Height="32" Padding="6" ToolTip="Search notes" AutomationProperties.Name="Search notes" />
                     <Button x:Name="MoreButton" Content="···" Click="More_Click" Style="{StaticResource QuietButton}" Width="32" Height="32" Padding="0" FontSize="20" ToolTip="More options" AutomationProperties.Name="More options" />

@@ -34,6 +34,16 @@ internal static class ShowcaseRenderer
         });
         WithWindow(store, window =>
         {
+            Get<Button>(window, "OpinionsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Save(ThroughLast(window, 900), Path.Combine(outputDirectory, "opinions.png"));
+        });
+        WithWindow(store, window =>
+        {
+            Get<Button>(window, "EconomicAnalysisButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Save(ThroughLast(window, 900), Path.Combine(outputDirectory, "economic-analysis.png"));
+        });
+        WithWindow(store, window =>
+        {
             Invoke(window, "SelectReviewTag", "Learning");
             Save(ThroughLast(window, 900), Path.Combine(outputDirectory, "review.png"));
         });
@@ -74,6 +84,12 @@ internal static class ShowcaseRenderer
         Add("Library hours\n10:00–18:00, Monday to Saturday. #Everyday", minutes: -15, collection: NoteCollection.Memo);
         Add("Bring a notebook, water and headphones. #Everyday", minutes: -35, collection: NoteCollection.Memo);
         Add("A gift idea\nA small print of a favourite photograph. #Later", minutes: -50, collection: NoteCollection.Memo);
+        Add("**A point of view to sit with.**\nWhat evidence would change this conclusion? #Reading", minutes: 0, collection: NoteCollection.Opinions);
+        Add("A useful sentence is a place to begin thinking. #Excerpts", minutes: -20, collection: NoteCollection.Opinions);
+        Add("Keep the words and the source together. #Reading", minutes: -45, collection: NoteCollection.Opinions);
+        Add("**The weekly notebook**\n1. Prices\n2. Employment\n3. Demand\n#Macro", minutes: 0, collection: NoteCollection.EconomicAnalysis);
+        Add("Compare the trend with the headline. #Data", minutes: -25, collection: NoteCollection.EconomicAnalysis);
+        Add("Keep the observation separate from the forecast. #Research", minutes: -50, collection: NoteCollection.EconomicAnalysis);
         return store;
 
         void Add(string text, int minutes, List<NoteImage>? images = null, NoteCollection collection = NoteCollection.Notes)

@@ -18,15 +18,15 @@ There are no external package references. Core targets `net10.0`; App and its UI
 | `Folio.Core/Models.cs`, `NoteText`, `NoteColors`, `NoteTags`, `MarkdownText` | Validated note structures, independent copies, derived tags and bounded shorthand parsing | WPF, clipboard and rendered layout |
 | `Folio.Core/ReviewScheduler.cs` | Recall estimates, memory updates and weighted Notes selection | Viewport visibility and session boundaries |
 | `Folio.Core/LibraryStore.cs` | Library loading, atomic commits, image ownership paths, validated backup/restore and shared storage primitives | Dialogs, bitmap decoding and UI state |
-| `LibraryStore.Drafts.cs` | Independent Notes/Memo drafts, external-change checks and recovery versions | Editor controls and timers |
+| `LibraryStore.Drafts.cs` | Independent collection drafts, external-change checks and recovery versions | Editor controls and timers |
 | `LibraryStore.Profiles.cs` | Profile validation, isolated recovery, atomic profile saves and profile conflict tracking | Avatar decoding and profile dialogs |
 | `LibraryStore.Deletion.cs` | Deletion intent, recovery completion and removal of unshared managed images | User-selected source files and manual archives |
 | `Folio.Core/NoteImages.cs`, `ArchiveLimits.cs` | Encoded-image and archive validation, size/path/integrity limits | Optional Windows image codecs |
 | `Folio.Core/PortableStorage.cs` | Copy-and-verify migration of older adjacent data into `Log` | Desktop window behavior |
 | `Folio.App/App.xaml.cs` | Startup, English native dialogs, path-based instance locks, library opening and recovery | Scheduling equations |
-| `Folio.App/MainWindow*` | Composition of the shared feed, draft lifecycle, Notes/Review/Memo navigation and user commands | JSON serialization and asset deletion rules |
+| `Folio.App/MainWindow*` | Shared-feed composition, draft lifecycle, collection navigation, Review and user commands | JSON serialization and asset deletion rules |
 | `MainWindow.Width`, `WindowWidthPreferences` | Work-area fitting, fixed-step width actions and atomic local window preferences | Notebook formats and portable library archives |
-| `WindowSystemMenu` | Native-frame menu policy, vertical resize command and window-lifetime hook cleanup | Feed navigation, drafts and persistent data |
+| `WindowSystemMenu` | Native-frame menu policy, resize availability and window-lifetime hook cleanup | Feed navigation, drafts and persistent data |
 | `Folio.App/Controls/NoteEditor.cs` | Native continuous text editing and structured capture, Markdown entry, lists, text formatting and undo | Persistent file writes |
 | `FeedView`, `FeedNoteCard` | Batched feed rendering, visible-note events, inline editing and post presentation | Review-memory equations |
 | `AttachmentPanel`, `ImageAttachments` | Same-height galleries, guarded asynchronous imports, independent PNG/JPEG copies and bounded frozen preview caching | Library recovery and backup policy |
@@ -49,6 +49,10 @@ Log/
     draft.previous.json                       (draft recovery)
     memo-draft.json                            (when saved)
     memo-draft.previous.json                   (Memo draft recovery)
+    opinions-draft.json                        (when saved)
+    opinions-draft.previous.json               (Opinions draft recovery)
+    economic-analysis-draft.json               (when saved)
+    economic-analysis-draft.previous.json      (Economic Analysis draft recovery)
     profile.json                              (optional)
     delete.pending.json                       (only during interrupted deletion)
   Backups/                                    (explicit exports)
@@ -58,7 +62,7 @@ Log/
 
 `window.json` contains presentation settings rather than review or note content and is excluded from library archives. Restoring a library preserves the former Data directory beside the new one. The optional `--data` argument selects a separate library directory for development and recovery work. Never use real notebook data as a fixture.
 
-One `CardDocument.Collection` value distinguishes Notes from Memo. Earlier schemas default to Notes, and schema 5 persists the collection. The collections share a library snapshot, asset directory and local profile. Separate draft files preserve each composer's in-progress text and attachments. Core prevents an existing note from changing collection through `Upsert`. Both scheduler selection and direct browse recording exclude Memo.
+`CardDocument.Collection` identifies Notes, Memo, Opinions or Economic Analysis. Schema 6 persists all four collections; the reader accepts schemas 1–6 and preserves earlier Notes/Memo identities. An absent collection defaults to Notes. Collections share a library snapshot, asset directory and local profile. Fixed, separate draft filenames preserve each composer's in-progress text and attachments. Core prevents an existing note from changing collection through `Upsert`. Scheduler selection and direct browse recording use Notes only.
 
 The local identity is shared, rather than copied into every post. Changing a name or avatar updates the displayed authors while preserving note content, review history and editing buffers. Default identity and first-run welcome creation belong to App. Welcome posts are ordinary Core documents; a saved empty library is not new and never repopulates deleted posts.
 
@@ -74,7 +78,7 @@ Picker and paste-data capture remain on the UI thread. Clipboard bitmap capture 
 
 ImageFailureContext annotates original exceptions at source-read, decode, clipboard-capture and storage boundaries without wrapping or changing their types. Messages and bounded diagnostics use that stage plus native error codes. An unavailable stored asset is distinguished from an oversized or empty file; preview failures keep their references and render a recoverable placeholder.
 
-Explicit deletion first plans the removed note's managed assets and retains any asset referenced by another post, the profile or either collection's current or recoverable previous draft. A small durable intent lets restart finish interrupted cleanup. Both library snapshots are sanitized so recovery cannot resurrect deleted text. Only then are unused local pictures removed. Source files chosen for import and manually exported backup archives remain independent.
+Explicit deletion first plans the removed note's managed assets and retains any asset referenced by another post, the profile or any collection's current or recoverable previous draft. A small durable intent lets restart finish interrupted cleanup. Both library snapshots are sanitized so recovery cannot resurrect deleted text. Only then are unused local pictures removed. Source files chosen for import and manually exported backup archives remain independent.
 
 The UI saves a dirty composer before deleting a note so ownership checks can see unsent image references. It saves pending edits and the departing draft before changing feeds. A failed save leaves the active feed and buffers available for retry. Review visibility events are counted once per round by App, then persisted through the Core scheduler.
 
@@ -94,7 +98,7 @@ The current interface has no network services, account, synchronization provider
 
 ## Verification
 
-The Core harness covers old schemas, text and tag bounds, review behavior, independent copies, both collections, atomic storage, conflicts, corruption, image ownership, interruption, backup/restore and portable migration. The Windows UI harness covers editing behavior, layout, text formatting, galleries and codecs, feed switching, review visibility, profile identity, error handling, welcome lifecycle and width preference persistence.
+The Core harness covers old schemas, text and tag bounds, review behavior, independent copies, all collections, atomic storage, conflicts, corruption, image ownership, interruption, backup/restore and portable migration. The Windows UI harness covers editing behavior, layout, text formatting, galleries and codecs, feed switching, review visibility, profile identity, error handling, welcome lifecycle and width preference persistence.
 
 Both are ordinary executable programs with nonzero failure exit codes. Run the exact commands in [CONTRIBUTING.md](../CONTRIBUTING.md); `dotnet test` alone does not execute these harnesses. Every run creates an isolated synthetic directory. UI previews render actual application controls offscreen and do not establish native desktop or monitor behavior. [VERIFICATION.md](VERIFICATION.md) records the latest checked release and its practical limits. [ALGORITHM.md](../src/Folio.Core/ALGORITHM.md) details saved formats and scheduling.
 

@@ -25,8 +25,22 @@ public sealed partial class LibraryStore
     private sealed class DraftState(NoteCollection collection)
     {
         public NoteCollection Collection { get; } = collection;
-        public string File => Collection == NoteCollection.Notes ? DraftFile : MemoDraftFile;
-        public string PreviousFile => Collection == NoteCollection.Notes ? PreviousDraftFile : PreviousMemoDraftFile;
+        public string File => Collection switch
+        {
+            NoteCollection.Notes => DraftFile,
+            NoteCollection.Memo => MemoDraftFile,
+            NoteCollection.Opinions => OpinionsDraftFile,
+            NoteCollection.EconomicAnalysis => EconomicAnalysisDraftFile,
+            _ => throw new ArgumentOutOfRangeException(nameof(Collection))
+        };
+        public string PreviousFile => Collection switch
+        {
+            NoteCollection.Notes => PreviousDraftFile,
+            NoteCollection.Memo => PreviousMemoDraftFile,
+            NoteCollection.Opinions => PreviousOpinionsDraftFile,
+            NoteCollection.EconomicAnalysis => PreviousEconomicAnalysisDraftFile,
+            _ => throw new ArgumentOutOfRangeException(nameof(Collection))
+        };
         public bool Inspected { get; set; }
         public bool WriteBlocked { get; set; }
         public string? KnownHash { get; set; }
@@ -95,6 +109,10 @@ public sealed partial class LibraryStore
             if (_cards.Any(card => card.Id == copy.CardId))
                 throw new InvalidOperationException("This draft has already been sent. Start a new draft before saving composer changes.");
             PrepareDraftWrite(state);
+            // Older applications do not inspect these feeds' draft files during image cleanup.
+            // Publish the library's format boundary before exposing any new draft ownership.
+            if (collection is NoteCollection.Opinions or NoteCollection.EconomicAnalysis)
+                EnsureCurrentLibraryFormat();
             CommitDraft(state, copy);
         }
     }

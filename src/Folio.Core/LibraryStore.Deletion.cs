@@ -73,6 +73,7 @@ public sealed partial class LibraryStore
             WritePrimary(bytes, previous);
             WritePrimary(bytes, primary);
             _knownHash = HashFile(primary);
+            _libraryVersion = CurrentLibraryVersion;
             _cards = remaining;
             _newLibrary = false;
             foreach (var name in disposable)
@@ -102,7 +103,8 @@ public sealed partial class LibraryStore
         foreach (var state in _draftStates.Values.Where(state => state.Inspected)) EnsureDraftUnchanged(state);
         // Both versions can be recovered independently. Never remove a picture still
         // owned by a current or recoverable previous draft, including image-only drafts.
-        foreach (var name in new[] { DraftFile, PreviousDraftFile, MemoDraftFile, PreviousMemoDraftFile })
+        foreach (var name in Enum.GetValues<NoteCollection>().Select(collection => new DraftState(collection))
+            .SelectMany(state => new[] { state.File, state.PreviousFile }))
         {
             var path = Path.Combine(RootPath, name);
             EnsureNoLinks(path);

@@ -27,7 +27,7 @@ public static class ReviewScheduler
     {
         ArgumentNullException.ThrowIfNull(card);
         if (card.Collection != NoteCollection.Notes)
-            throw new InvalidOperationException("Memo records do not participate in spaced repetition.");
+            throw new InvalidOperationException("Only Notes participate in spaced repetition.");
         if (!Enum.IsDefined(rating)) throw new ArgumentOutOfRangeException(nameof(rating));
         var memory = card.Memory;
         if (memory.LastReviewAt > now)

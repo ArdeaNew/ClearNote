@@ -1,10 +1,10 @@
-# ClearNote 1.9.6
+# ClearNote 1.9.7
 
 An offline notebook for Windows, built around a continuous feed.
 
 Save ClearNote.exe in a writable folder and open it. Windows x64. No installation or separate runtime is required.
 
-Write at the top and click Post. Double-click a post to edit. Notes holds ideas, Memo keeps everyday details, and Review revisits learning notes by tag.
+Write at the top and click Post. Double-click a post to edit. Notes holds ideas, Memo keeps everyday details, Opinions collects other voices, and Economic Analysis keeps economic research. Each feed has its own draft. Review revisits Notes by tag.
 
 - Ctrl+Enter: post. Ctrl+S: save. Shift+Enter: line break.
 - Type `1. ` for a numbered list; type `#` for tags.

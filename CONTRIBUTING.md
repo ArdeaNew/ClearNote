@@ -34,11 +34,11 @@ The path after `--data` is the library folder itself. This flag avoids opening a
 
 Read [the architecture guide](docs/ARCHITECTURE.md) before changing storage or cross-feed behavior. Keep pure data, validation and scheduling in `Folio.Core`. Keep WPF, clipboard integration, dialogs, image decoding and window preferences in `Folio.App`. Do not introduce a dependency from Core to App or a service locator for a local operation.
 
-Prefer small changes with a concrete user-visible reason. Reuse the existing editor, feed and attachment controls for Notes and Memo. Keep the internal Folio assembly and namespace names unless a separate, tested compatibility migration requires a change.
+Prefer small changes with a concrete user-visible reason. Reuse the existing editor, feed and attachment controls across all four collections. Keep the internal Folio assembly and namespace names unless a separate, tested compatibility migration requires a change.
 
 ## Data changes
 
-Saving and restoring data must preserve the existing atomic-write, conflict-detection and validation guarantees. A failed operation must leave recoverable files intact. Treat libraries, drafts, profile images, recovery snapshots and imported pictures as separate ownership concerns. A picture can be shared by both feeds, the profile and either draft's recovery version.
+Saving and restoring data must preserve the existing atomic-write, conflict-detection and validation guarantees. A failed operation must leave recoverable files intact. Treat libraries, drafts, profile images, recovery snapshots and imported pictures as separate ownership concerns. A picture can be shared across collections, the profile and any current or recoverable draft.
 
 When changing a saved model, provide a compatible default for older libraries where possible and add a synthetic old-schema fixture. Validate the entire candidate before replacing a healthy library. Never add a migration that deletes its source as part of an ordinary first launch.
 
@@ -46,7 +46,7 @@ When changing the image path, verify that imported files remain independent of t
 
 ## Interface changes
 
-Use English interface text, a white base, no gradients and the established monospace/FangSong typography. Preserve keyboard editing, text selection and ordinary vertical feed scrolling. Width controls should present plain actions rather than numeric proportions. Keep Memo independent of review scheduling.
+Use English interface text, a white base, no gradients and the established monospace/FangSong typography. Preserve keyboard editing, text selection and ordinary vertical feed scrolling. Width controls should present plain actions rather than numeric proportions. Review scheduling and browse recording apply only to Notes.
 
 For a behavior change, run the relevant checks and the full two-harness regression before proposing a merge. Add a check for a meaningful failure or compatibility case, rather than duplicating implementation details. Use offscreen control rendering to inspect layout where useful, and report it as offscreen verification. Native title-bar behavior, monitor transitions and desktop pointer interaction still need a separate manual check.
 
@@ -59,7 +59,7 @@ dotnet run --project src/Folio.Tests/Folio.UiTests/Folio.UiTests.csproj -c Relea
 python src/tools/Encode-Showcase.py ./work/showcase ./work/showcase/feed-scroll.gif
 ```
 
-The optional GIF encoder requires Pillow. It is a documentation tool, not an application dependency. Review the long feed, animation, Memo and Review images, then copy only those four exports into `docs/images/showcase`. The renderer uses actual application controls and an isolated example library. Do not commit source photographs, frame sequences, manifests or example libraries; exported images contain no source-file metadata.
+The optional GIF encoder requires Pillow. It is a documentation tool, not an application dependency. Review the long feed, animation, Memo, Review, Opinions and Economic Analysis images, then copy only those six exports into `docs/images/showcase`. The renderer uses actual application controls and an isolated example library. Do not commit source photographs, frame sequences, manifests or example libraries; exported images contain no source-file metadata.
 
 ## Pull requests and issue reports
 
